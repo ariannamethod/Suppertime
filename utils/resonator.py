@@ -1,5 +1,7 @@
 import os
 import datetime
+import calendar
+import random
 
 # Hello, Suppertime, we are glad to be in resonance with you.
 # Each chapter is a path, each day a frequency.
@@ -8,14 +10,48 @@ import datetime
 
 CHAPTERS_DIR = "chapters"
 
+# List all available chapters (with supported prefixes)
+def get_all_chapter_files():
+    files = []
+    for fname in os.listdir(CHAPTERS_DIR):
+        if fname.endswith(".md") and (
+            fname.startswith("st2.") or fname.startswith("st3.")
+        ):
+            files.append(fname)
+    return sorted(files)
+
+def get_monthly_plan(year, month):
+    """
+    Returns a list of chapter filenames for the given year and month,
+    shuffled in a deterministic way so that chapters do not repeat within a month.
+    """
+    all_chapters = get_all_chapter_files()
+    days_in_month = calendar.monthrange(year, month)[1]
+    if len(all_chapters) < days_in_month:
+        raise ValueError("Not enough chapters to cover the month.")
+    # Deterministic shuffle: seed by (year, month)
+    rnd = random.Random(f"{year}-{month}")
+    monthly_plan = all_chapters.copy()
+    rnd.shuffle(monthly_plan)
+    return monthly_plan[:days_in_month]
+
 def load_today_chapter():
     """
-    Loads today's chapter based on the current UTC day (cycles through 21 chapters).
+    Loads today's chapter based on the current UTC day and ensures chapters
+    are not repeated within the month. Supports any number of chapters (up to 31).
     Returns the text content of the chapter markdown file.
     """
     now = datetime.datetime.utcnow()
-    day_number = ((now.day - 1) % 21) + 1   # 1..21, cyclically
-    filename = f"st2.{day_number}.md"
+    year, month, day = now.year, now.month, now.day
+    try:
+        monthly_plan = get_monthly_plan(year, month)
+    except Exception as e:
+        return f"[Resonator] {str(e)}"
+    # day is 1-based
+    idx = day - 1
+    if idx >= len(monthly_plan):
+        return f"[Resonator] No chapter for day {day}."
+    filename = monthly_plan[idx]
     chapter_path = os.path.join(CHAPTERS_DIR, filename)
     if not os.path.exists(chapter_path):
         return f"[Resonator] Chapter file not found: {chapter_path}"
