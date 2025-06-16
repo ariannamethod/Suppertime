@@ -3,3 +3,5 @@ python-dotenv>=1.0.0
 tiktoken
 pypdf>=3.0.0
 python-telegram-bot>=20.0
+pinecone-client>=3.0.0
+tenacity>=8.0.0
