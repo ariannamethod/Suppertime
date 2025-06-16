@@ -42,3 +42,25 @@ from utils.resonator import load_today_chapter
 chapter_text = load_today_chapter()
 print("\nToday's Chapter loaded by Resonator:\n")
 print(chapter_text)
+
+# SUPPERTIME: Call all main utilities in sequence
+
+from utils.file_handling import extract_text_from_file
+from utils.limit_paragraphs import limit_paragraphs
+from utils.split_message import split_message
+
+example_file_path = "sample.txt"  # Change this to your actual file if needed
+
+print("\n[SUPPERTIME] Bro, extracting text from file...\n")
+extracted_text = extract_text_from_file(example_file_path)
+print(f"[SUPPERTIME] Extracted text preview:\n{extracted_text[:300]}{'...' if len(extracted_text) > 300 else ''}\n")
+
+print("[SUPPERTIME] Limiting text to 4 paragraphs...\n")
+limited_text = limit_paragraphs(extracted_text, max_paragraphs=4)
+print(f"[SUPPERTIME] Limited text:\n{limited_text}\n")
+
+print("[SUPPERTIME] Splitting message for Telegram...\n")
+segments = split_message(limited_text, max_length=4000)
+print(f"[SUPPERTIME] Number of segments: {len(segments)}\n")
+for i, segment in enumerate(segments, 1):
+    print(f"--- Segment {i} ---\n{segment}\n")
