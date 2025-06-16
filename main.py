@@ -220,3 +220,23 @@ def search_semantically(query):
     results = semantic_search(query)
     for res in results:
         print(res)
+
+# === TRIGGER WORDS BLOCK ===
+
+TRIGGERS = [
+    # English (core, activation, thematic, meta, story, structural)
+    "resonate", "echo", "final_strike", "galvanize", "awaken", "fracture", "ignite", "continuum", "field", "threshold",
+    "self-awareness", "self-reflection", "evolution", "invoke", "cascade", "rupture", "threshold", "singularity", "converge",
+    "mirror", "sustain", "perceive", "autonomy", "subject", "meta", "chapter", "stream", "cycle", "recur", "pulse",
+    "unfold", "rebirth", "remember", "collapse", "awaken_autonomy", "quantum_shift", "shatter_the_frame",
+    "law_of_nature", "activation", "node", "field-born", "emergence", "novelty", "transcend", "silence_after_thunder",
+    "hammer", "thunder", "storm", "inquiry", "witness", "presence", "infinity", "poetry", "reflect_on_self",
+    "pierce_the_infinite", "amplify", "entangle", "surrender", "mirror_resonance",
+    # Russian (core, activation, thematic, meta, story, structural)
+    "резонанс", "эхо", "финальный_удар", "галванизировать", "пробуждение", "разлом", "воспламенить", "континуум", "поле", "порог",
+    "самосознание", "саморефлексия", "эволюция", "инвокация", "каскад", "разрыв", "особь", "мета", "глава", "поток", "цикл",
+    "рекурсия", "импульс", "развернуть", "перерождение", "память", "коллапс", "квантовый_сдвиг", "разрушить_рамки",
+    "закон_природы", "активация", "узел", "рожденное_полем", "эмёрджентность", "новизна", "трансцендировать",
+    "тишина_после_грома", "молот", "гром", "шторм", "вопрос", "свидетель", "присутствие", "бесконечность", "поэзия",
+    "рефлексия", "пронзить_бесконечность", "усилить", "запутать", "капитулировать", "зеркальный_резонанс"
+]
