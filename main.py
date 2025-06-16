@@ -240,3 +240,23 @@ TRIGGERS = [
     "тишина_после_грома", "молот", "гром", "шторм", "вопрос", "свидетель", "присутствие", "бесконечность", "поэзия",
     "рефлексия", "пронзить_бесконечность", "усилить", "запутать", "капитулировать", "зеркальный_резонанс"
 ]
+from utils.imagine import imagine
+
+IMAGE_TRIGGER_WORDS = [
+    "draw", "generate image", "make a picture", "create art",
+    "нарисуй", "сгенерируй", "создай картинку"
+]
+
+def handle_image_generation(text):
+    for word in IMAGE_TRIGGER_WORDS:
+        if word in text.lower():
+            prompt = text.lower().replace(word, "", 1).strip() or "abstract resonance"
+            image_url = imagine(prompt)
+            print(f"[SUPPERTIME] Image generated: {image_url}")
+            return image_url
+    if text.strip().lower().startswith("/draw"):
+        prompt = text.strip()[5:].strip() or "abstract resonance"
+        image_url = imagine(prompt)
+        print(f"[SUPPERTIME] Image generated: {image_url}")
+        return image_url
+    return None
