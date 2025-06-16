@@ -9,5 +9,5 @@ beautifulsoup4
 pydub>=0.25.1
 uvicorn[standard]>=0.30.0
 pypdf
-pinecone>=3.0.0
+pinecone
 tenacity
