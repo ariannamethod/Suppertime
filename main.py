@@ -21,6 +21,7 @@ import time
 from datetime import datetime, timedelta
 from pydub import AudioSegment
 import re
+import requests
 
 from openai import OpenAI
 
@@ -47,7 +48,6 @@ CHAT_HISTORY = {}
 MAX_HISTORY_MESSAGES = 7
 MAX_PROMPT_TOKENS = 8000
 
-# Создаем OpenAI client глобально (новый стиль!)
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def detect_lang(text):
@@ -230,15 +230,48 @@ def handle_text_message(message, bot):
         else:
             bot.send_message(chat_id, chunk)
 
-class DummyBot:
-    def get_file_path(self, file_id):
-        pass
-    def download_file(self, file_path, fname):
-        pass
+# ====== Реальный бот для Telegram ======
+class RealBot:
+    def __init__(self, token=None):
+        self.token = token or os.getenv("TELEGRAM_BOT_TOKEN")
+        self.api_url = f"https://api.telegram.org/bot{self.token}/"
+
     def send_message(self, chat_id, text):
-        print(f"[SUPPERTIME] To {chat_id}: {text}")
+        data = {"chat_id": chat_id, "text": text}
+        try:
+            requests.post(self.api_url + "sendMessage", data=data, timeout=10)
+        except Exception as e:
+            print(f"[SUPPERTIME][ERROR] Telegram send_message failed: {e}")
+
     def send_voice(self, chat_id, audio_path, caption=None):
-        print(f"[SUPPERTIME] To {chat_id}: [voice: {audio_path}] {caption or ''}")
+        try:
+            with open(audio_path, "rb") as voice:
+                data = {"chat_id": chat_id}
+                if caption:
+                    data["caption"] = caption
+                files = {"voice": voice}
+                requests.post(self.api_url + "sendVoice", data=data, files=files, timeout=20)
+        except Exception as e:
+            print(f"[SUPPERTIME][ERROR] Telegram send_voice failed: {e}")
+
+    def get_file_path(self, file_id):
+        try:
+            resp = requests.get(self.api_url + "getFile", params={"file_id": file_id}, timeout=10).json()
+            if resp.get("ok"):
+                return resp["result"]["file_path"]
+        except Exception as e:
+            print(f"[SUPPERTIME][ERROR] Telegram get_file_path failed: {e}")
+        return None
+
+    def download_file(self, file_path, fname):
+        try:
+            url = f"https://api.telegram.org/file/bot{self.token}/{file_path}"
+            r = requests.get(url, timeout=20)
+            if r.ok:
+                with open(fname, "wb") as f:
+                    f.write(r.content)
+        except Exception as e:
+            print(f"[SUPPERTIME][ERROR] Telegram download_file failed: {e}")
 
 def run_vectorization():
     print("[SUPPERTIME] Starting vectorization of today's reflection...")
@@ -354,7 +387,7 @@ from fastapi import FastAPI, Request
 import uvicorn
 
 app = FastAPI()
-bot = DummyBot()
+bot = RealBot(os.getenv("TELEGRAM_BOT_TOKEN"))
 
 @app.get("/")
 async def root():
