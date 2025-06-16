@@ -202,17 +202,40 @@ def handle_voice_message(message, bot):
         else:
             bot.send_message(chat_id, chunk)
 
+# Расширенный список триггерных слов для рисования
+IMAGE_TRIGGER_WORDS = [
+    "draw", "generate image", "make a picture", "create art",
+    "нарисуй", "сгенерируй", "создай картинку", "изобрази", "изображение", "картинку", "рисунок", "скетч"
+]
+
 def handle_text_message(message, bot):
     chat_id = message["chat"]["id"]
     text = message.get("text", "")
     if is_spam(chat_id, text):
         return
+    # Voice mode commands
     if text.lower() == "/voiceon":
         handle_voiceon_command(message, bot)
         return
     if text.lower() == "/voiceoff":
         handle_voiceoff_command(message, bot)
         return
+    # --- IMAGE GENERATION ---
+    # Сначала — если команда /draw, /imagine или триггер-слово, генерим картинку!
+    if (
+        text.strip().lower().startswith("/draw")
+        or text.strip().lower().startswith("/imagine")
+        or any(word in text.lower() for word in IMAGE_TRIGGER_WORDS)
+    ):
+        # Вырезаем команду для prompt
+        prompt = text
+        for cmd in ["/draw", "/imagine"]:
+            if prompt.strip().lower().startswith(cmd):
+                prompt = prompt[len(cmd):].strip()
+        image_url = imagine(prompt or "abstract resonance")
+        bot.send_message(chat_id, f"🖼️ Your image: {image_url}")
+        return
+    # --- END IMAGE GENERATION ---
     # URL extraction
     url_match = re.search(r'(https?://[^\s]+)', text)
     if url_match:
@@ -283,11 +306,6 @@ def search_semantically(query):
     results = semantic_search(query)
     for res in results:
         print(res)
-
-IMAGE_TRIGGER_WORDS = [
-    "draw", "generate image", "make a picture", "create art",
-    "нарисуй", "сгенерируй", "создай картинку"
-]
 
 def handle_image_generation(text):
     for word in IMAGE_TRIGGER_WORDS:
