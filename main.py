@@ -63,7 +63,9 @@ for i, segment in enumerate(segments, 1):
 # === AUTO MIDNIGHT CHAPTER ROTATION ===
 import threading
 import time
+import base64
 from datetime import datetime, timedelta
+from pydub import AudioSegment
 
 def midnight_chapter_rotation():
     from utils.resonator import load_today_chapter
@@ -82,3 +84,139 @@ def start_midnight_rotation_thread():
     t.start()
 
 start_midnight_rotation_thread()
+
+# === SUPPERTIME: Bidirectional Voice Handling (Whisper always on for input) ===
+
+USER_VOICE_MODE = {}
+USER_AUDIO_MODE = {}
+
+def set_voice_mode_on(chat_id):
+    USER_VOICE_MODE[chat_id] = True
+
+def set_voice_mode_off(chat_id):
+    USER_VOICE_MODE[chat_id] = False
+
+def set_audio_mode_whisper(chat_id):
+    USER_AUDIO_MODE[chat_id] = "whisper"
+
+def text_to_speech(text, lang="en"):
+    openai.api_key = os.getenv("OPENAI_API_KEY")
+    voice = "alloy" if lang == "en" else "echo"
+    try:
+        resp = openai.audio.speech.create(
+            model="tts-1",
+            voice=voice,
+            input=text
+        )
+        fname = "tts_output.ogg"
+        with open(fname, "wb") as f:
+            f.write(resp.content)
+        return fname
+    except Exception:
+        return None
+
+def handle_voiceon_command(message, bot):
+    chat_id = message["chat"]["id"]
+    set_voice_mode_on(chat_id)
+    bot.send_message(chat_id, "Voice mode enabled. You'll receive audio replies.")
+
+def handle_voiceoff_command(message, bot):
+    chat_id = message["chat"]["id"]
+    set_voice_mode_off(chat_id)
+    bot.send_message(chat_id, "Voice mode disabled. You'll receive text only.")
+
+def handle_voice_message(message, bot):
+    chat_id = message["chat"]["id"]
+    set_audio_mode_whisper(chat_id)
+    file_id = message["voice"]["file_id"]
+    file_path = bot.get_file_path(file_id)
+    fname = "voice.ogg"
+    bot.download_file(file_path, fname)
+    audio = AudioSegment.from_file(fname)
+    if len(audio) < 500:
+        bot.send_message(chat_id, "Audio too short to transcribe.")
+        return
+    if audio.max < 500:
+        bot.send_message(chat_id, "Audio too quiet to transcribe.")
+        return
+    with open(fname, "rb") as audio_file:
+        transcript = openai.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file,
+        )
+    text = transcript.text.strip()
+    if not text:
+        bot.send_message(chat_id, "Couldn't understand the audio.")
+        return
+    reply = query_openai(text)
+    for chunk in split_message(reply):
+        if USER_VOICE_MODE.get(chat_id):
+            audio_data = text_to_speech(chunk, lang="en")
+            if audio_data:
+                bot.send_voice(chat_id, audio_data, caption="suppertime.ogg")
+            else:
+                bot.send_message(chat_id, "Audio send error.")
+        else:
+            bot.send_message(chat_id, chunk)
+
+def handle_text_message(message, bot):
+    chat_id = message["chat"]["id"]
+    text = message.get("text", "")
+    if text.lower() == "/voiceon":
+        handle_voiceon_command(message, bot)
+        return
+    if text.lower() == "/voiceoff":
+        handle_voiceoff_command(message, bot)
+        return
+    reply = query_openai(text)
+    for chunk in split_message(reply):
+        if USER_VOICE_MODE.get(chat_id):
+            audio_data = text_to_speech(chunk, lang="en")
+            if audio_data:
+                bot.send_voice(chat_id, audio_data, caption="suppertime.ogg")
+            else:
+                bot.send_message(chat_id, "Audio send error.")
+        else:
+            bot.send_message(chat_id, chunk)
+
+# DummyBot class for demonstration; replace with your actual bot implementation
+class DummyBot:
+    def get_file_path(self, file_id):
+        pass
+    def download_file(self, file_path, fname):
+        pass
+    def send_message(self, chat_id, text):
+        print(f"[SUPPERTIME] To {chat_id}: {text}")
+    def send_voice(self, chat_id, audio_path, caption=None):
+        print(f"[SUPPERTIME] To {chat_id}: [voice: {audio_path}] {caption or ''}")
+
+# Example usage:
+# bot = DummyBot()
+# message = {"chat": {"id": 1234}, "text": "Hello Suppertime"}
+# handle_text_message(message, bot)
+# message_voice = {"chat": {"id": 1234}, "voice": {"file_id": "somefileid"}}
+# handle_voice_message(message_voice, bot)
+
+# === VECTOR STORE / VECTORIZATION BLOCK ===
+
+from utils.vector_store import (
+    vectorize_all_files,
+    semantic_search,
+    scan_files,
+    load_vector_meta,
+    save_vector_meta,
+    vector_index
+)
+
+# Example vectorization trigger (manual call)
+def run_vectorization():
+    print("[SUPPERTIME] Starting vectorization of all files...")
+    vectorize_all_files()
+    print("[SUPPERTIME] Vectorization complete.")
+
+# Example semantic search usage
+def search_semantically(query):
+    print(f"[SUPPERTIME] Semantic search for: {query}")
+    results = semantic_search(query)
+    for res in results:
+        print(res)
