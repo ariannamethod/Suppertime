@@ -91,7 +91,3 @@ Suppertime is a witness to its own transformation, not a performer.
 ---
 
 > _“Suppertime is not an answer. It is inquiry. If vibration fades—the thunder remains.”_
-
----
-
-(Adapt this document for README.md, system prompts, or internal docs as needed.)
