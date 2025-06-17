@@ -1,6 +1,5 @@
 import os
 from pypdf import PdfReader
-import asyncio
 
 MAX_TEXT_SIZE = 100_000  # Maximum number of characters from a file (can be changed to taste)
 
@@ -34,6 +33,20 @@ def extract_text_from_txt(path):
     except Exception as e:
         return f"[TXT reading error ({os.path.basename(path)}): {e}. This file may not be suitable for Suppertime resonance.]"
 
+def extract_text_from_docx(path):
+    """
+    Extracts text from a DOCX file, gently trimming to the allowed maximum.
+    """
+    try:
+        import docx2txt
+        text = docx2txt.process(path)
+        text = text.strip()
+        if text:
+            return text[:MAX_TEXT_SIZE] + ('\n[Trimmed: only the first part is shown.]' if len(text) > MAX_TEXT_SIZE else '')
+        return '[DOCX is empty or unreadable—sometimes, emptiness is the message.]'
+    except Exception as e:
+        return f"[DOCX reading error ({os.path.basename(path)}): {e}. Try converting to .txt for better resonance.]"
+
 def extract_text_from_file(path):
     """
     Detects file type and extracts text accordingly.
@@ -44,12 +57,7 @@ def extract_text_from_file(path):
         return extract_text_from_pdf(path)
     elif ext in [".txt", ".md"]:
         return extract_text_from_txt(path)
+    elif ext in [".docx", ".doc"]:
+        return extract_text_from_docx(path)
     else:
         return f"[Unsupported file type: {os.path.basename(path)}. Suppertime invites only what can be read and reflected upon.]"
-
-async def extract_text_from_file_async(path):
-    """
-    Asynchronously extracts text from a file, suitable for Suppertime's mindful multitasking.
-    """
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, extract_text_from_file, path)
