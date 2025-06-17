@@ -10,8 +10,8 @@ import random
 
 CHAPTERS_DIR = "chapters"
 
-# List all available chapters (with supported prefixes)
 def get_all_chapter_files():
+    """List all available chapter files with supported prefixes."""
     files = []
     for fname in os.listdir(CHAPTERS_DIR):
         if fname.endswith(".md") and (
@@ -35,11 +35,11 @@ def get_monthly_plan(year, month):
     rnd.shuffle(monthly_plan)
     return monthly_plan[:days_in_month]
 
-def load_today_chapter():
+def load_today_chapter(return_path=False):
     """
     Loads today's chapter based on the current UTC day and ensures chapters
     are not repeated within the month. Supports any number of chapters (up to 31).
-    Returns the text content of the chapter markdown file.
+    If return_path=True, returns the full path to the chapter file instead of its content.
     """
     now = datetime.datetime.utcnow()
     year, month, day = now.year, now.month, now.day
@@ -47,7 +47,6 @@ def load_today_chapter():
         monthly_plan = get_monthly_plan(year, month)
     except Exception as e:
         return f"[Resonator] {str(e)}"
-    # day is 1-based
     idx = day - 1
     if idx >= len(monthly_plan):
         return f"[Resonator] No chapter for day {day}."
@@ -55,6 +54,8 @@ def load_today_chapter():
     chapter_path = os.path.join(CHAPTERS_DIR, filename)
     if not os.path.exists(chapter_path):
         return f"[Resonator] Chapter file not found: {chapter_path}"
+    if return_path:
+        return chapter_path
     with open(chapter_path, "r", encoding="utf-8") as f:
         return f.read()
 
