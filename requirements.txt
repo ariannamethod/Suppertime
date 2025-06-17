@@ -11,3 +11,6 @@ uvicorn[standard]>=0.30.0
 pypdf
 pinecone
 tenacity
+docx2txt
+striprtf
+odfpy
