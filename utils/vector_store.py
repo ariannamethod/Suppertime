@@ -2,56 +2,44 @@ import os
 import glob
 import json
 import hashlib
-import asyncio
-from pinecone import Pinecone, PineconeException
+import pinecone
 import openai
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 VECTOR_META_PATH = "vector_store.meta.json"
-EMBED_DIM = 1536  # For OpenAI ada-002
+EMBED_DIM = 1536  # For ada-002
 
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX = os.getenv("PINECONE_INDEX")
 
-pc = Pinecone(api_key=PINECONE_API_KEY)
-
-# Ensure the index exists, or create it
-if PINECONE_INDEX not in [x["name"] for x in pc.list_indexes()]:
-    pc.create_index(name=PINECONE_INDEX, dimension=EMBED_DIM, metric="cosine")
-
-vector_index = pc.Index(PINECONE_INDEX)
+pinecone.init(api_key=PINECONE_API_KEY, environment="gcp-starter")  # environment зависит от твоего индекса
+index = pinecone.Index(PINECONE_INDEX)
 
 def file_hash(fname):
-    """Compute a hash for the file to detect changes."""
     with open(fname, "rb") as f:
         return hashlib.md5(f.read()).hexdigest()
 
 def scan_files(path="config/*.md"):
-    """Scan and hash all markdown files in the config directory."""
     files = {}
     for fname in glob.glob(path):
         files[fname] = file_hash(fname)
     return files
 
 def load_vector_meta():
-    """Load metadata for files already vectorized."""
     if os.path.isfile(VECTOR_META_PATH):
         with open(VECTOR_META_PATH, "r") as f:
             return json.load(f)
     return {}
 
 def save_vector_meta(meta):
-    """Save the current vectorization metadata."""
     with open(VECTOR_META_PATH, "w") as f:
         json.dump(meta, f)
 
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
-async def safe_embed(text, openai_api_key):
-    """Safely obtain an embedding with retries, for resilience and patient resonance."""
-    return await get_embedding(text, openai_api_key)
+def safe_embed(text, openai_api_key):
+    return get_embedding(text, openai_api_key)
 
-async def get_embedding(text, openai_api_key):
-    """Request an embedding from OpenAI for the given text."""
+def get_embedding(text, openai_api_key):
     openai.api_key = openai_api_key
     res = openai.embeddings.create(
         model="text-embedding-ada-002",
@@ -60,10 +48,6 @@ async def get_embedding(text, openai_api_key):
     return res.data[0].embedding
 
 def chunk_text(text, chunk_size=900, overlap=120):
-    """
-    Split text into overlapping chunks for deeper resonance.
-    Each chunk keeps some overlap with the previous to preserve the flow of meaning.
-    """
     chunks = []
     start = 0
     while start < len(text):
@@ -74,12 +58,7 @@ def chunk_text(text, chunk_size=900, overlap=120):
         start += chunk_size - overlap
     return chunks
 
-async def vectorize_all_files(openai_api_key, force=False, on_message=None):
-    """
-    Vectorize all config markdown files, updating only changed or new files.
-    Chunks are embedded and upserted into the Pinecone index.
-    If files are removed, their vectors are deleted.
-    """
+def vectorize_all_files(openai_api_key, force=False, on_message=None):
     current = scan_files()
     previous = load_vector_meta()
     changed = [f for f in current if (force or current[f] != previous.get(f))]
@@ -96,46 +75,38 @@ async def vectorize_all_files(openai_api_key, force=False, on_message=None):
         for idx, chunk in enumerate(chunks):
             meta_id = f"{fname}:{idx}"
             try:
-                emb = await safe_embed(chunk, openai_api_key)
-                vector_index.upsert(vectors=[
-                    {
-                        "id": meta_id,
-                        "values": emb,
-                        "metadata": {"file": fname, "chunk": idx, "hash": current[fname]}
-                    }
-                ])
+                emb = safe_embed(chunk, openai_api_key)
+                index.upsert(
+                    vectors=[(meta_id, emb, {"file": fname, "chunk": idx, "hash": current[fname]})]
+                )
                 upserted_ids.append(meta_id)
-            except PineconeException as e:
+            except Exception as e:
                 if on_message:
-                    await on_message(f"Pinecone error: {e}")
+                    on_message(f"Pinecone error: {e}")
                 continue
 
     deleted_ids = []
     for fname in removed:
-        for idx in range(50):
+        for idx in range(50):  # грубая оценка макс. чанков на файл
             meta_id = f"{fname}:{idx}"
             try:
-                vector_index.delete(ids=[meta_id])
+                index.delete(ids=[meta_id])
                 deleted_ids.append(meta_id)
             except Exception:
                 pass
 
     save_vector_meta(current)
     if on_message:
-        await on_message(
+        on_message(
             f"Vectorization complete. New/changed: {', '.join(changed + new) if changed or new else '-'}; deleted: {', '.join(removed) if removed else '-'}"
         )
     return {"upserted": upserted_ids, "deleted": deleted_ids}
 
-async def semantic_search(query, openai_api_key, top_k=5):
-    """
-    Perform a semantic search in the vector store for the given query.
-    Returns the most resonant text chunks.
-    """
-    emb = await safe_embed(query, openai_api_key)
-    res = vector_index.query(vector=emb, top_k=top_k, include_metadata=True)
+def semantic_search(query, openai_api_key, top_k=5):
+    emb = safe_embed(query, openai_api_key)
+    res = index.query(vector=emb, top_k=top_k, include_metadata=True)
     chunks = []
-    matches = getattr(res, "matches", [])
+    matches = res.get("matches", []) if isinstance(res, dict) else getattr(res, "matches", [])
     for match in matches:
         metadata = match.get("metadata", {})
         fname = metadata.get("file")
