@@ -363,21 +363,21 @@ class RealBot:
 def run_vectorization():
     print("[SUPPERTIME] Starting vectorization of today's reflection...")
     chapter_path = load_today_chapter(return_path=True)
-    if chapter_path:
+    if chapter_path and not str(chapter_path).startswith("[Resonator]"):
         vectorize_file(chapter_path, openai_api_key=os.getenv("OPENAI_API_KEY"))
         print("[SUPPERTIME] Vectorization complete.")
     else:
-        print("[SUPPERTIME] Could not determine today's chapter file.")
+        print(f"[SUPPERTIME] Could not determine today's chapter file: {chapter_path}")
 
 def search_semantically(query):
     print(f"[SUPPERTIME] Semantic search for: {query}")
     chapter_path = load_today_chapter(return_path=True)
-    if chapter_path:
+    if chapter_path and not str(chapter_path).startswith("[Resonator]"):
         results = semantic_search_in_file(chapter_path, query, openai_api_key=os.getenv("OPENAI_API_KEY"))
         for res in results:
             print(res)
     else:
-        print("[SUPPERTIME] Could not determine today's chapter file for semantic search.")
+        print(f"[SUPPERTIME] Could not determine today's chapter file for semantic search: {chapter_path}")
 
 def handle_image_generation(text):
     for word in IMAGE_TRIGGER_WORDS:
@@ -402,7 +402,7 @@ def midnight_chapter_rotation(bot):
         time.sleep(wait_seconds)
         chapter_text = load_today_chapter()
         today = datetime.now().strftime("%Y-%m-%d")
-        chapter_title = (chapter_text.strip().split('\n')[0] or 'Untitled').strip()
+        chapter_title = (chapter_text.strip().split('\n')[0] or 'Untitled').strip() if isinstance(chapter_text, str) else 'Untitled'
         CREATOR_CHAT_ID = os.getenv("SUPPERTIME_CHAT_ID")
         if CREATOR_CHAT_ID:
             try:
