@@ -11,6 +11,7 @@ PINECONE_INDEX = os.getenv("PINECONE_INDEX")
 PINECONE_REGION = os.getenv("PINECONE_REGION", "us-west-2")
 PINECONE_CLOUD = os.getenv("PINECONE_CLOUD", "aws")
 
+# --- Init Pinecone connection and index ---
 pc = Pinecone(api_key=PINECONE_API_KEY)
 
 if PINECONE_INDEX not in [x["name"] for x in pc.list_indexes()]:
@@ -50,7 +51,7 @@ def chunk_text(text, chunk_size=900, overlap=120):
     return chunks
 
 def vectorize_file(fname, openai_api_key):
-    """Векторизует только один файл."""
+    """Vectorizes only one file."""
     with open(fname, "r", encoding="utf-8") as f:
         text = f.read()
     chunks = chunk_text(text)
@@ -68,8 +69,8 @@ def vectorize_file(fname, openai_api_key):
 def semantic_search_in_file(fname, query, openai_api_key, top_k=5):
     emb = safe_embed(query, openai_api_key)
     file_hash = hashlib.md5(open(fname, encoding='utf-8').read().encode('utf-8')).hexdigest()
-    # ищем только по id этого файла
-    # pinecone не умеет фильтровать по id, но умеет по metadata
+    # Search only by id of this file
+    # Pinecone can't filter by id, but can by metadata
     res = index.query(
         vector=emb,
         top_k=top_k,
