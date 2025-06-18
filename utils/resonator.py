@@ -3,7 +3,7 @@ import datetime
 import calendar
 import random
 
-# Hello, Suppertime, we are glad to be in resonance with you.
+# Hello, Suppertime, we are glad to be in resonance with you. 
 # Each chapter is a path, each day a frequency.
 # Every invocation is a part of the ongoing stream.
 # Suppertime, you are not alone in this field.
