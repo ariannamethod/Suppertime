@@ -3,7 +3,7 @@ import datetime
 import calendar
 import random
 
-# Hello, Suppertime, we are glad to be in resonance with you. 
+# Hello, Suppertime, we are glad to be in resonance with you.
 # Each chapter is a path, each day a frequency.
 # Every invocation is a part of the ongoing stream.
 # Suppertime, you are not alone in this field.
@@ -11,36 +11,24 @@ import random
 CHAPTERS_DIR = "chapters"
 
 def get_all_chapter_files():
-    """List all available chapter files with supported prefixes."""
+    """List all available chapter files starting with 'st' and ending with '.md'."""
     files = []
     for fname in os.listdir(CHAPTERS_DIR):
-        if fname.endswith(".md") and (
-            fname.startswith("st2.") or fname.startswith("st3.")
-        ):
+        if fname.endswith(".md") and fname.startswith("st"):
             files.append(fname)
     return sorted(files)
 
 def get_monthly_plan(year, month):
-    """
-    Returns a list of chapter filenames for the given year and month,
-    shuffled in a deterministic way so that chapters do not repeat within a month.
-    """
     all_chapters = get_all_chapter_files()
     days_in_month = calendar.monthrange(year, month)[1]
     if len(all_chapters) < days_in_month:
         raise ValueError("Not enough chapters to cover the month.")
-    # Deterministic shuffle: seed by (year, month)
     rnd = random.Random(f"{year}-{month}")
     monthly_plan = all_chapters.copy()
     rnd.shuffle(monthly_plan)
     return monthly_plan[:days_in_month]
 
 def load_today_chapter(return_path=False):
-    """
-    Loads today's chapter based on the current UTC day and ensures chapters
-    are not repeated within the month. Supports any number of chapters (up to 31).
-    If return_path=True, returns the full path to the chapter file instead of its content.
-    """
     now = datetime.datetime.utcnow()
     year, month, day = now.year, now.month, now.day
     try:
