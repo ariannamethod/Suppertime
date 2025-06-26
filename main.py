@@ -328,13 +328,12 @@ def handle_text_message(message, bot):
         text.strip().lower().startswith("/draw")
         or text.strip().lower().startswith("/imagine")
         or any(word in text.lower() for word in IMAGE_TRIGGER_WORDS)
-        or any(word in text.lower() for word in TRIGGERS)
     ):
         prompt = text
         for cmd in ["/draw", "/imagine"]:
             if prompt.strip().lower().startswith(cmd):
                 prompt = prompt[len(cmd):].strip()
-        image_url = imagine(prompt or "abstract resonance")
+        image_url = imagine(prompt or "abstract resonance reflection")
         if image_url:
             bot.send_message(chat_id, f"{EMOJI['image_received']} {image_url}", thread_id=thread_id)
         else:
