@@ -68,10 +68,11 @@ EMOJI = {
 }
 
 SUPPERTIME_BOT_ID = None
+bot = None  # Глобальный bot
 
-def get_my_id(bot):
+def get_my_id(bot_instance):
     try:
-        resp = requests.get(bot.api_url + "getMe", timeout=10).json()
+        resp = requests.get(bot_instance.api_url + "getMe", timeout=10).json()
         if resp.get("ok"):
             return resp["result"]["id"]
     except Exception as e:
@@ -232,29 +233,29 @@ def is_spam(chat_id, text):
     USER_LAST_MESSAGE[chat_id] = (text.strip().lower(), now)
     return False
 
-def handle_voiceon_command(message, bot):
+def handle_voiceon_command(message, bot_instance):
     chat_id = message["chat"]["id"]
     set_voice_mode_on(chat_id)
-    bot.send_message(chat_id, EMOJI["voiceon"], thread_id=message.get("message_thread_id"))
+    bot_instance.send_message(chat_id, EMOJI["voiceon"], thread_id=message.get("message_thread_id"))
 
-def handle_voiceoff_command(message, bot):
+def handle_voiceoff_command(message, bot_instance):
     chat_id = message["chat"]["id"]
     set_voice_mode_off(chat_id)
-    bot.send_message(chat_id, EMOJI["voiceoff"], thread_id=message.get("message_thread_id"))
+    bot_instance.send_message(chat_id, EMOJI["voiceoff"], thread_id=message.get("message_thread_id"))
 
-def handle_voice_message(message, bot):
+def handle_voice_message(message, bot_instance):
     chat_id = message["chat"]["id"]
     set_audio_mode_whisper(chat_id)
     file_id = message["voice"]["file_id"]
-    file_path = bot.get_file_path(file_id)
+    file_path = bot_instance.get_file_path(file_id)
     fname = "voice.ogg"
-    bot.download_file(file_path, fname)
+    bot_instance.download_file(file_path, fname)
     audio = AudioSegment.from_file(fname)
     if len(audio) < 500:
-        bot.send_message(chat_id, EMOJI["voice_audio_error"], thread_id=message.get("message_thread_id"))
+        bot_instance.send_message(chat_id, EMOJI["voice_audio_error"], thread_id=message.get("message_thread_id"))
         return
     if audio.max < 500:
-        bot.send_message(chat_id, EMOJI["voice_audio_error"], thread_id=message.get("message_thread_id"))
+        bot_instance.send_message(chat_id, EMOJI["voice_audio_error"], thread_id=message.get("message_thread_id"))
         return
     with open(fname, "rb") as audio_file:
         transcript = openai_client.audio.transcriptions.create(
@@ -263,7 +264,7 @@ def handle_voice_message(message, bot):
         )
     text = transcript.text.strip()
     if not text:
-        bot.send_message(chat_id, EMOJI["voice_audio_error"], thread_id=message.get("message_thread_id"))
+        bot_instance.send_message(chat_id, EMOJI["voice_audio_error"], thread_id=message.get("message_thread_id"))
         return
     if is_spam(chat_id, text):
         return
@@ -272,18 +273,18 @@ def handle_voice_message(message, bot):
         if USER_VOICE_MODE.get(chat_id):
             audio_data = text_to_speech(chunk, lang=USER_LANG.get(chat_id, "en"))
             if audio_data:
-                bot.send_voice(chat_id, audio_data, caption=EMOJI["voice_file_caption"], thread_id=message.get("message_thread_id"))
+                bot_instance.send_voice(chat_id, audio_data, caption=EMOJI["voice_file_caption"], thread_id=message.get("message_thread_id"))
             else:
-                bot.send_message(chat_id, EMOJI["voice_unavailable"], thread_id=message.get("message_thread_id"))
+                bot_instance.send_message(chat_id, EMOJI["voice_unavailable"], thread_id=message.get("message_thread_id"))
         else:
-            bot.send_message(chat_id, chunk, thread_id=message.get("message_thread_id"))
+            bot_instance.send_message(chat_id, chunk, thread_id=message.get("message_thread_id"))
 
 IMAGE_TRIGGER_WORDS = [
     "draw", "generate image", "make a picture", "create art",
     "нарисуй", "сгенерируй", "создай картинку", "изобрази", "изображение", "картинку", "рисунок", "скетч"
 ]
 
-def handle_text_message(message, bot):
+def handle_text_message(message, bot_instance):
     chat_id = message["chat"]["id"]
     text = message.get("text", "")
     thread_id = message.get("message_thread_id")
@@ -297,32 +298,32 @@ def handle_text_message(message, bot):
     if "document" in message:
         file_name = message["document"].get("file_name", "document.unknown")
         file_id = message["document"]["file_id"]
-        file_path = bot.get_file_path(file_id)
+        file_path = bot_instance.get_file_path(file_id)
         fname = f"uploaded_{file_name}"
-        bot.download_file(file_path, fname)
+        bot_instance.download_file(file_path, fname)
         ext = file_name.lower().split(".")[-1]
         try:
             if ext in ("pdf", "doc", "docx", "txt", "md", "rtf"):
                 extracted_text = extract_text_from_file(fname)
                 if not extracted_text:
-                    bot.send_message(chat_id, EMOJI["document_failed"], thread_id=thread_id)
+                    bot_instance.send_message(chat_id, EMOJI["document_failed"], thread_id=thread_id)
                     return
                 reply = query_openai(f"Summarize this document:\n\n{extracted_text[:2000]}", chat_id=chat_id)
                 for chunk in split_message(EMOJI["document_extracted"] + "\n" + reply):
-                    bot.send_message(chat_id, chunk, thread_id=thread_id)
+                    bot_instance.send_message(chat_id, chunk, thread_id=thread_id)
                 return
             else:
-                bot.send_message(chat_id, EMOJI["document_unsupported"], thread_id=thread_id)
+                bot_instance.send_message(chat_id, EMOJI["document_unsupported"], thread_id=thread_id)
                 return
         except Exception as e:
-            bot.send_message(chat_id, EMOJI["document_error"], thread_id=thread_id)
+            bot_instance.send_message(chat_id, EMOJI["document_error"], thread_id=thread_id)
             return
 
     if text.lower() == "/voiceon":
-        handle_voiceon_command(message, bot)
+        handle_voiceon_command(message, bot_instance)
         return
     if text.lower() == "/voiceoff":
-        handle_voiceoff_command(message, bot)
+        handle_voiceoff_command(message, bot_instance)
         return
 
     if (
@@ -336,9 +337,9 @@ def handle_text_message(message, bot):
                 prompt = prompt[len(cmd):].strip()
         image_url = imagine(prompt or "abstract resonance reflection")
         if image_url:
-            bot.send_message(chat_id, f"{EMOJI['image_received']} {image_url}", thread_id=thread_id)
+            bot_instance.send_message(chat_id, f"{EMOJI['image_received']} {image_url}", thread_id=thread_id)
         else:
-            bot.send_message(chat_id, EMOJI["image_generation_error"], thread_id=thread_id)
+            bot_instance.send_message(chat_id, EMOJI["image_generation_error"], thread_id=thread_id)
         return
 
     url_match = re.search(r'(https?://[^\s]+)', text)
@@ -351,11 +352,11 @@ def handle_text_message(message, bot):
         if USER_VOICE_MODE.get(chat_id):
             audio_data = text_to_speech(chunk, lang=USER_LANG.get(chat_id, "en"))
             if audio_data:
-                bot.send_voice(chat_id, audio_data, caption=EMOJI["voice_file_caption"], thread_id=thread_id)
+                bot_instance.send_voice(chat_id, audio_data, caption=EMOJI["voice_file_caption"], thread_id=thread_id)
             else:
-                bot.send_message(chat_id, EMOJI["voice_unavailable"], thread_id=message.get("message_thread_id"))
+                bot_instance.send_message(chat_id, EMOJI["voice_unavailable"], thread_id=thread_id)
         else:
-            bot.send_message(chat_id, chunk, thread_id=message.get("message_thread_id"))
+            bot_instance.send_message(chat_id, chunk, thread_id=thread_id)
 
 class RealBot:
     def __init__(self, token=None):
@@ -441,7 +442,7 @@ def handle_image_generation(text):
         return image_url
     return None
 
-def midnight_chapter_rotation(bot):
+def midnight_chapter_rotation(bot_instance):
     from utils.resonator import load_today_chapter
     while True:
         now = datetime.now()
@@ -475,12 +476,12 @@ def midnight_chapter_rotation(bot):
         if CREATOR_CHAT_ID:
             try:
                 msg = f"{emoji} Suppertime: новая глава выбрана.\nСегодня: {chapter_title}\nPreview: {chapter_text_full[:100]}"
-                bot.send_message(CREATOR_CHAT_ID, msg)
+                bot_instance.send_message(CREATOR_CHAT_ID, msg)
             except Exception as e:
                 print(f"[SUPPERTIME][ERROR] Midnight ping to creator failed: {e}")
 
-def start_midnight_rotation_thread(bot):
-    t = threading.Thread(target=midnight_chapter_rotation, args=(bot,), daemon=True)
+def start_midnight_rotation_thread(bot_instance):
+    t = threading.Thread(target=midnight_chapter_rotation, args=(bot_instance,), daemon=True)
     t.start()
 
 def reflect_on_ancestor():
@@ -569,6 +570,10 @@ Stay aware. Galvanize. Resonance is our witness.
 from fastapi import FastAPI, Request
 
 app = FastAPI()
+bot = RealBot(os.getenv("TELEGRAM_BOT_TOKEN"))  # Глобальный bot
+SUPPERTIME_BOT_ID = get_my_id(bot)
+print("SUPPERTIME_BOT_ID =", SUPPERTIME_BOT_ID)
+start_midnight_rotation_thread(bot)
 
 @app.get("/")
 async def root():
