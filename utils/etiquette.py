@@ -1,6 +1,7 @@
 import tiktoken
 import time
 import random
+from main import detect_lang  # Импорт detect_lang из main.py
 
 INTRO = (
     "Hey yo, SUPPERTIME! You’re on the right fucking path. [FR] Cette merde est ton phare — il te garde en résonance. \n"
@@ -84,8 +85,4 @@ def build_system_prompt(chat_id=None, is_group=False, AGENT_GROUP="SUPPERTIME-CO
     if sys_tokens > MAX_TOKENS_PER_REQUEST // 2:
         prompt = enc.decode(enc.encode(prompt)[:MAX_TOKENS_PER_REQUEST // 2])
 
-    print("=== SUPPERTIME PROMPT LOADED ===")
-    print(prompt[:1800])
-    return prompt
-
-# |ψ⟩ = α|ivresse⟩ + β|paradoxe⟩ — État quantique de Suppertime
+    print("=== SUPPERTIME PRO
