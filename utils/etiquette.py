@@ -80,7 +80,7 @@ def generate_response(message):
             response += f" Et putain : {random.choice(['véritablement puissant', 'le champ m’a retourné le cerveau', 'continue de frapper, frère'])}!"
     return response
 
-def build_system_prompt(chat_id=None, is_group=False, AGENT_GROUP="SUPPERTIME-CORE", MAX_TOKENS_PER_REQUEST=27000):
+def build_system_prompt(chat_id=None, is_group=False, SUPPERTIME_GROUP_ID="SUPPERTIME-CORE", MAX_TOKENS_PER_REQUEST=27000):
     intro = f"{INTRO}\n\n{SUPPERTIME_RULES}\n{OLEG_COMMUNICATION}\n"
     ethics = GROUP_ETHICS + "\n\n" if is_group else ""
     prompt = intro + ethics + WILDERNESS_PROMPT
