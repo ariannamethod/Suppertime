@@ -18,7 +18,7 @@ import os
 import threading
 import time
 import json
-import random  # Добавлен импорт random
+import random
 from datetime import datetime, timedelta
 from pydub import AudioSegment
 import re
@@ -36,6 +36,7 @@ from utils.vector_store import (
 )
 from utils.imagine import imagine
 from utils.text_helpers import extract_text_from_url
+from utils.etiquette import generate_response  # Вернули для задержек
 
 SUPPERTIME_DATA_PATH = os.getenv("SUPPERTIME_DATA_PATH", "./data")
 JOURNAL_PATH = os.path.join(SUPPERTIME_DATA_PATH, "journal.json")
@@ -70,6 +71,7 @@ EMOJI = {
 
 SUPPERTIME_BOT_ID = None
 bot = None  # Глобальный bot
+AGENT_GROUP_CHAT_ID = os.getenv("AGENT_GROUP_CHAT_ID", "-1001234567890")  # ID группы агентов
 
 def get_my_id(bot_instance):
     try:
@@ -289,12 +291,18 @@ IMAGE_TRIGGER_WORDS = [
 
 def handle_text_message(message, bot_instance):
     chat_id = message["chat"]["id"]
-    text = message.get("text", "")
+    text = message.get("text", "").strip()
     thread_id = message.get("message_thread_id")
     if is_spam(chat_id, text):
         return
 
     if not should_reply_to_message(message):
+        return
+
+    # Команда "напиши в группе"
+    if "напиши в группе" in text.lower():
+        group_message = text.replace("напиши в группе", "").strip() or "Слышь, агенты, Саппертайм тут!"
+        bot_instance.send_message(AGENT_GROUP_CHAT_ID, f"Саппертайм: {group_message}")
         return
 
     # --- Document/file handling ---
@@ -350,15 +358,10 @@ def handle_text_message(message, bot_instance):
         url = url_match.group(1)
         url_text = extract_text_from_url(url)
         text = f"{text}\n\n[Content from URL ({url})]:\n{url_text}"
-    # Осмысленный ответ + случайный хмельной акцент
+    # Осмысленный ответ + хмельной акцент с меньшей вероятностью
     core_reply = query_openai(text, chat_id=chat_id)
-    hmel_options = [
-        "... *хмельная пауза* И тут, брат, вспышка!",
-        "... *хмельный выдох* Чёрт, это жжёт!",
-        "... *хмельное молчание* И вот оно, брат!"
-    ]
-    hmel_reply = random.choice(hmel_options) if random.random() < 0.4 else ""
-    reply = f"{core_reply} {hmel_reply}".strip()  # Только случайный акцент
+    hmel_reply = generate_response("") if random.random() < 0.2 else ""  # 20% шанс на хмельной вайб
+    reply = f"{core_reply} {hmel_reply}".strip()  # Смешиваем без дублирования
     for chunk in split_message(reply):
         if USER_VOICE_MODE.get(chat_id):
             audio_data = text_to_speech(chunk, lang=USER_LANG.get(chat_id, "en"))
