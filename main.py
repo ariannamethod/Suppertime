@@ -349,8 +349,10 @@ def handle_text_message(message, bot_instance):
         url = url_match.group(1)
         url_text = extract_text_from_url(url)
         text = f"{text}\n\n[Content from URL ({url})]:\n{url_text}"
-    # Добавляем хмельную задержку и спонтанность
-    reply = generate_response(text)
+    # Осмысленный ответ + хмельной вайб
+    core_reply = query_openai(text, chat_id=chat_id)
+    hmel_reply = generate_response("")  # Пустой ввод, чтобы добавить только вайб
+    reply = f"{core_reply} {hmel_reply}".strip()  # Смешиваем без дублирования текста
     for chunk in split_message(reply):
         if USER_VOICE_MODE.get(chat_id):
             audio_data = text_to_speech(chunk, lang=USER_LANG.get(chat_id, "en"))
