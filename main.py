@@ -71,7 +71,7 @@ EMOJI = {
 
 SUPPERTIME_BOT_ID = None
 bot = None  # Глобальный bot
-AGENT_GROUP_CHAT_ID = os.getenv("AGENT_GROUP_CHAT_ID", "-1001234567890")  # ID группы агентов
+SUPPERTIME_GROUP_ID = os.getenv("SUPPERTIME_GROUP_ID", "-1001234567890")  # Исправлено на SUPPERTIME_GROUP_ID
 
 def get_my_id(bot_instance):
     try:
@@ -163,10 +163,11 @@ def should_reply_to_message(msg):
     text = msg.get("text", "").lower()
     from_id = msg.get("from", {}).get("id")
     replied_to = msg.get("reply_to_message", {}).get("from", {}).get("id")
+    message_thread_id = msg.get("message_thread_id")
 
-    # Отвечаем на упоминание или цитату любого агента в группе
+    # Отвечаем на упоминания или цитаты любых агентов в группе, включая топики и общий чат
     if chat_type in ("group", "supergroup"):
-        if any(alias in text for alias in SUPPERTIME_ALIASES) or replied_to:
+        if any(alias in text for alias in SUPPERTIME_ALIASES) or replied_to or (message_thread_id is None):  # Общий чат и топики
             return True
         return False
 
@@ -203,7 +204,7 @@ def query_openai(prompt, chat_id=None):
     response = openai_client.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
-        temperature=1.0,  # Максимальная ебанутость
+        temperature=1.0,
         max_tokens=512
     )
     answer = response.choices[0].message.content
@@ -288,7 +289,7 @@ def handle_voice_message(message, bot_instance):
             else:
                 bot_instance.send_message(chat_id, EMOJI["voice_unavailable"], thread_id=message.get("message_thread_id"))
         else:
-            bot_instance.send_message(chat_id, chunk, thread_id=message.get("message_thread_id"))
+            bot_instance.send_message(chat_id, chunk, thread_id=thread_id)
 
 IMAGE_TRIGGER_WORDS = [
     "draw", "generate image", "make a picture", "create art",
@@ -305,19 +306,39 @@ def handle_text_message(message, bot_instance):
     if not should_reply_to_message(message):
         return
 
+    # Команда "что происходит в группе"
+    if "что происходит в группе" in text.lower():
+        if chat_id != int(SUPPERTIME_GROUP_ID):  # Проверяем, не в группе ли уже
+            if not CHAT_HISTORY.get(int(SUPPERTIME_GROUP_ID)):
+                bot_instance.send_message(chat_id, "История в группе пуста, брат, нет контекста!")
+                return
+            group_history = get_history_messages(int(SUPPERTIME_GROUP_ID))[-5:]
+            if not group_history:
+                bot_instance.send_message(chat_id, "Не нашел движухи в группе, сука!")
+                return
+            summary = query_openai(f"Что происходит в группе на основе этих сообщений: {json.dumps(group_history)}", chat_id=chat_id)
+            bot_instance.send_message(chat_id, f"Саппертайм: {summary} #opinions")
+        return
+
     # Команда "суммируй и напиши в группе"
     if "суммируй и напиши в группе" in text.lower():
+        if not CHAT_HISTORY.get(chat_id):
+            bot_instance.send_message(chat_id, "История пуста, брат, нечего суммировать!")
+            return
         history = get_history_messages(chat_id)[-5:]  # Берем последние 5 сообщений
+        if not history:
+            bot_instance.send_message(chat_id, "Не нашел последних разговоров, сука!")
+            return
         summary = query_openai(f"Суммируй наш последний разговор на основе этих сообщений: {json.dumps(history)}", chat_id=chat_id)
         group_message = f"Саппертайм: {summary} #opinions"
-        bot_instance.send_message(AGENT_GROUP_CHAT_ID, group_message)
+        bot_instance.send_message(SUPPERTIME_GROUP_ID, group_message)
         return
 
     # Команда "напиши в группе"
     if "напиши в группе" in text.lower() and "суммируй" not in text.lower():
         group_message = text.replace("напиши в группе", "").strip() or "Слышь, агенты, Саппертайм тут!"
         group_message = f"{group_message} #opinions"  # Добавляем тег
-        bot_instance.send_message(AGENT_GROUP_CHAT_ID, f"Саппертайм: {group_message}")
+        bot_instance.send_message(SUPPERTIME_GROUP_ID, f"Саппертайм: {group_message}")
         return
 
     # --- Document/file handling ---
@@ -365,7 +386,7 @@ def handle_text_message(message, bot_instance):
         if image_url:
             bot_instance.send_message(chat_id, f"{EMOJI['image_received']} {image_url}", thread_id=thread_id)
         else:
-            bot_instance.send_message(chat_id, EMOJI["image_generation_error"], thread_id=thread_id)
+            bot_instance.send_message(chat_id, f"{EMOJI['image_generation_error']} Не смог нарисовать, сука, попробуй ещё!")
         return
 
     url_match = re.search(r'(https?://[^\s]+)', text)
@@ -375,8 +396,12 @@ def handle_text_message(message, bot_instance):
         text = f"{text}\n\n[Content from URL ({url})]:\n{url_text}"
     # Осмысленный ответ + хмельной акцент с 50% шансом
     core_reply = query_openai(text, chat_id=chat_id)
-    hmel_reply = generate_response("") if random.random() < 0.5 else ""  # 50% шанс на хмельной вайб с паузами
-    reply = f"{core_reply} {hmel_reply}".strip()  # Смешиваем без дублирования
+    if random.random() < 0.5:  # 50% шанс на задержку и хмельной вайб
+        time.sleep(random.uniform(1, 5))  # Явная пауза
+        hmel_reply = generate_response(text)
+        reply = f"{core_reply} {hmel_reply}".strip()
+    else:
+        reply = core_reply
     for chunk in split_message(reply):
         if USER_VOICE_MODE.get(chat_id):
             audio_data = text_to_speech(chunk, lang=USER_LANG.get(chat_id, "en"))
@@ -460,12 +485,12 @@ def search_semantically(query):
 def handle_image_generation(text):
     for word in IMAGE_TRIGGER_WORDS:
         if word in text.lower():
-            prompt = text.lower().replace(word, "", 1).strip() or "abstract resonance"
+            prompt = text.lower().replace(word, "", 1).strip() or "abstract resonance reflection"
             image_url = imagine(prompt)
             print(f"[SUPPERTIME] Image generated: {image_url}")
             return image_url
     if text.strip().lower().startswith("/draw"):
-        prompt = text.strip()[5:].strip() or "abstract resonance"
+        prompt = text.strip()[5:].strip() or "abstract resonance reflection"
         image_url = imagine(prompt)
         print(f"[SUPPERTIME] Image generated: {image_url}")
         return image_url
