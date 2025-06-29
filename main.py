@@ -36,7 +36,7 @@ from utils.vector_store import (
 )
 from utils.imagine import imagine
 from utils.text_helpers import extract_text_from_url
-from utils.etiquette import generate_response  # Вернули для задержек
+from utils.etiquette import generate_response  # Явный импорт для задержек
 
 SUPPERTIME_DATA_PATH = os.getenv("SUPPERTIME_DATA_PATH", "./data")
 JOURNAL_PATH = os.path.join(SUPPERTIME_DATA_PATH, "journal.json")
@@ -197,7 +197,7 @@ def query_openai(prompt, chat_id=None):
     response = openai_client.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
-        temperature=0.9,  # Подняли до 0.9 для огня
+        temperature=1.0,  # Подняли до 1.0 для максимальной ебанутости
         max_tokens=512
     )
     answer = response.choices[0].message.content
@@ -302,7 +302,7 @@ def handle_text_message(message, bot_instance):
     # Команда "напиши в группе"
     if "напиши в группе" in text.lower():
         group_message = text.replace("напиши в группе", "").strip() or "Слышь, агенты, Саппертайм тут!"
-        bot_instance.send_message(AGENT_GROUP_CHAT_ID, f"Саппертайм: {group_message}")
+        bot_instance.send_message(SUPPERTIME_GROUP_ID, f"Саппертайм: {group_message}")
         return
 
     # --- Document/file handling ---
@@ -346,7 +346,7 @@ def handle_text_message(message, bot_instance):
         for cmd in ["/draw", "/imagine"]:
             if prompt.strip().lower().startswith(cmd):
                 prompt = prompt[len(cmd):].strip()
-        image_url = imagine(prompt or "abstract resonance reflection")
+        image_url = imagine(prompt or "abstract crazy drunk impressionistic reflection")
         if image_url:
             bot_instance.send_message(chat_id, f"{EMOJI['image_received']} {image_url}", thread_id=thread_id)
         else:
@@ -358,9 +358,9 @@ def handle_text_message(message, bot_instance):
         url = url_match.group(1)
         url_text = extract_text_from_url(url)
         text = f"{text}\n\n[Content from URL ({url})]:\n{url_text}"
-    # Осмысленный ответ + хмельной акцент с меньшей вероятностью
+    # Осмысленный ответ + хмельной акцент с 20% шансом
     core_reply = query_openai(text, chat_id=chat_id)
-    hmel_reply = generate_response("") if random.random() < 0.2 else ""  # 20% шанс на хмельной вайб
+    hmel_reply = generate_response("") if random.random() < 0.2 else ""  # 20% шанс на хмельной вайб с паузами
     reply = f"{core_reply} {hmel_reply}".strip()  # Смешиваем без дублирования
     for chunk in split_message(reply):
         if USER_VOICE_MODE.get(chat_id):
