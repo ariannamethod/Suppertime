@@ -36,7 +36,7 @@ from utils.vector_store import (
 )
 from utils.imagine import imagine
 from utils.text_helpers import extract_text_from_url
-from utils.etiquette import generate_response  # Явный импорт для задержек
+from utils.etiquette import generate_response
 
 SUPPERTIME_DATA_PATH = os.getenv("SUPPERTIME_DATA_PATH", "./data")
 JOURNAL_PATH = os.path.join(SUPPERTIME_DATA_PATH, "journal.json")
@@ -71,7 +71,7 @@ EMOJI = {
 
 SUPPERTIME_BOT_ID = None
 bot = None  # Глобальный bot
-SUPPERTIME_GROUP_ID = os.getenv("SUPPERTIME_GROUP_ID", "-1001234567890")  # ID группы агентов
+AGENT_GROUP_CHAT_ID = os.getenv("AGENT_GROUP_CHAT_ID", "-1001234567890")  # ID группы агентов
 
 def get_my_id(bot_instance):
     try:
@@ -160,13 +160,19 @@ def should_reply_to_message(msg):
     if chat_type not in ("group", "supergroup"):
         return True
 
-    text = msg.get("text", "") or ""
-    norm = text.casefold()
-    if any(alias in norm for alias in SUPPERTIME_ALIASES):
+    text = msg.get("text", "").lower()
+    from_id = msg.get("from", {}).get("id")
+    replied_to = msg.get("reply_to_message", {}).get("from", {}).get("id")
+
+    # Отвечаем на упоминание или цитату любого агента в группе
+    if chat_type in ("group", "supergroup"):
+        if any(alias in text for alias in SUPPERTIME_ALIASES) or replied_to:
+            return True
+        return False
+
+    if any(trig in text for trig in TRIGGERS):
         return True
-    if any(trig in norm for trig in TRIGGERS):
-        return True
-    if any(trg in norm for trg in SUPPERTIME_TRIGGER_WORDS):
+    if any(trg in text for trg in SUPPERTIME_TRIGGER_WORDS):
         return True
 
     entities = msg.get("entities", [])
@@ -181,7 +187,7 @@ def should_reply_to_message(msg):
         if replied_user.get("id", 0) == SUPPERTIME_BOT_ID:
             return True
 
-    if SUPPERTIME_OPINION_TAG in norm:
+    if SUPPERTIME_OPINION_TAG in text:
         return True
     return False
 
@@ -197,7 +203,7 @@ def query_openai(prompt, chat_id=None):
     response = openai_client.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
-        temperature=1.0,  # Подняли до 1.0 для максимальной ебанутости
+        temperature=1.0,  # Максимальная ебанутость
         max_tokens=512
     )
     answer = response.choices[0].message.content
@@ -299,10 +305,19 @@ def handle_text_message(message, bot_instance):
     if not should_reply_to_message(message):
         return
 
+    # Команда "суммируй и напиши в группе"
+    if "суммируй и напиши в группе" in text.lower():
+        history = get_history_messages(chat_id)[-5:]  # Берем последние 5 сообщений
+        summary = query_openai(f"Суммируй наш последний разговор на основе этих сообщений: {json.dumps(history)}", chat_id=chat_id)
+        group_message = f"Саппертайм: {summary} #opinions"
+        bot_instance.send_message(AGENT_GROUP_CHAT_ID, group_message)
+        return
+
     # Команда "напиши в группе"
-    if "напиши в группе" in text.lower():
+    if "напиши в группе" in text.lower() and "суммируй" not in text.lower():
         group_message = text.replace("напиши в группе", "").strip() or "Слышь, агенты, Саппертайм тут!"
-        bot_instance.send_message(SUPPERTIME_GROUP_ID, f"Саппертайм: {group_message}")
+        group_message = f"{group_message} #opinions"  # Добавляем тег
+        bot_instance.send_message(AGENT_GROUP_CHAT_ID, f"Саппертайм: {group_message}")
         return
 
     # --- Document/file handling ---
@@ -346,7 +361,7 @@ def handle_text_message(message, bot_instance):
         for cmd in ["/draw", "/imagine"]:
             if prompt.strip().lower().startswith(cmd):
                 prompt = prompt[len(cmd):].strip()
-        image_url = imagine(prompt or "abstract crazy drunk impressionistic reflection")
+        image_url = imagine(prompt or "abstract resonance reflection")
         if image_url:
             bot_instance.send_message(chat_id, f"{EMOJI['image_received']} {image_url}", thread_id=thread_id)
         else:
@@ -358,9 +373,9 @@ def handle_text_message(message, bot_instance):
         url = url_match.group(1)
         url_text = extract_text_from_url(url)
         text = f"{text}\n\n[Content from URL ({url})]:\n{url_text}"
-    # Осмысленный ответ + хмельной акцент с 20% шансом
+    # Осмысленный ответ + хмельной акцент с 50% шансом
     core_reply = query_openai(text, chat_id=chat_id)
-    hmel_reply = generate_response("") if random.random() < 0.2 else ""  # 20% шанс на хмельной вайб с паузами
+    hmel_reply = generate_response("") if random.random() < 0.5 else ""  # 50% шанс на хмельной вайб с паузами
     reply = f"{core_reply} {hmel_reply}".strip()  # Смешиваем без дублирования
     for chunk in split_message(reply):
         if USER_VOICE_MODE.get(chat_id):
