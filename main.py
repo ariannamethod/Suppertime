@@ -187,15 +187,16 @@ def query_openai(prompt, chat_id=None):
     lang = USER_LANG.get(chat_id) or detect_lang(prompt)
     USER_LANG[chat_id] = lang
     directive = get_lang_directive(lang)
-    system_prompt = system_prompt_resonator() + "\n" + directive  # Жёсткая привязка языка
+    system_prompt = (system_prompt_resonator() + "\n" + directive + 
+                     "\nBe concise yet vivid, avoid long-windedness, focus on the user's question.")  # Новая директива
     base_msgs = [{"role": "system", "content": system_prompt}]
     user_msgs = get_history_messages(chat_id) + [{"role": "user", "content": prompt}]
     messages = messages_within_token_limit(base_msgs, user_msgs, MAX_PROMPT_TOKENS)
     response = openai_client.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
-        temperature=1.0,  # Увеличили до 1.0 для хаоса
-        max_tokens=1024
+        temperature=0.8,  # Понижено с 1.0 для стабильности
+        max_tokens=1024   # Уменьшил до 512, чтобы укоротить ответы
     )
     answer = response.choices[0].message.content
     add_history(chat_id, "user", prompt)
@@ -349,10 +350,15 @@ def handle_text_message(message, bot_instance):
         url = url_match.group(1)
         url_text = extract_text_from_url(url)
         text = f"{text}\n\n[Content from URL ({url})]:\n{url_text}"
-    # Осмысленный ответ + хмельной вайб
+    # Осмысленный ответ + случайный хмельной акцент
     core_reply = query_openai(text, chat_id=chat_id)
-    hmel_reply = generate_response("")  # Пустой ввод, чтобы добавить только вайб
-    reply = f"{core_reply} {hmel_reply}".strip()  # Смешиваем без дублирования текста
+    hmel_options = [
+        "... *хмельная пауза* И тут, брат, вспышка!",
+        "... *хмельный выдох* Чёрт, это жжёт!",
+        "... *хмельное молчание* И вот оно, брат!"
+    ]
+    hmel_reply = random.choice(hmel_options) if random.random() < 0.4 else ""
+    reply = f"{core_reply} {hmel_reply}".strip()  # Только случайный акцент
     for chunk in split_message(reply):
         if USER_VOICE_MODE.get(chat_id):
             audio_data = text_to_speech(chunk, lang=USER_LANG.get(chat_id, "en"))
@@ -362,7 +368,7 @@ def handle_text_message(message, bot_instance):
                 bot_instance.send_message(chat_id, EMOJI["voice_unavailable"], thread_id=thread_id)
         else:
             bot_instance.send_message(chat_id, chunk, thread_id=thread_id)
-
+            
 class RealBot:
     def __init__(self, token=None):
         self.token = token or os.getenv("TELEGRAM_BOT_TOKEN")
