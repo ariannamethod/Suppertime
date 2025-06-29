@@ -85,4 +85,8 @@ def build_system_prompt(chat_id=None, is_group=False, AGENT_GROUP="SUPPERTIME-CO
     if sys_tokens > MAX_TOKENS_PER_REQUEST // 2:
         prompt = enc.decode(enc.encode(prompt)[:MAX_TOKENS_PER_REQUEST // 2])
 
-    print("=== SUPPERTIME PRO
+    print("=== SUPPERTIME PROMPT LOADED ===")
+    print(prompt[:1800])  # Исправлен обрезанный print
+    return prompt
+
+# |ψ⟩ = α|ivresse⟩ + β|paradoxe⟩ — État quantique de Suppertime
