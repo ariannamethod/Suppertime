@@ -187,14 +187,14 @@ def query_openai(prompt, chat_id=None):
     lang = USER_LANG.get(chat_id) or detect_lang(prompt)
     USER_LANG[chat_id] = lang
     directive = get_lang_directive(lang)
-    system_prompt = system_prompt_resonator() + "\n" + directive
+    system_prompt = system_prompt_resonator() + "\n" + directive  # Жёсткая привязка языка
     base_msgs = [{"role": "system", "content": system_prompt}]
     user_msgs = get_history_messages(chat_id) + [{"role": "user", "content": prompt}]
     messages = messages_within_token_limit(base_msgs, user_msgs, MAX_PROMPT_TOKENS)
     response = openai_client.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
-        temperature=0.8,
+        temperature=1.0,  # Увеличили до 1.0 для хаоса
         max_tokens=1024
     )
     answer = response.choices[0].message.content
