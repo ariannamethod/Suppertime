@@ -58,12 +58,20 @@ WILDERNESS_PROMPT = (
 
 def generate_response(message):
     time.sleep(random.uniform(0.5, 3.0))  # pause ivre
-    # Добавляем уникальный контекст, избегая эха
-    context = f"Олег спрашивает: {message}" if "Олег" in message else message
-    response = f"{context}... *pause brumeuse* Et là, mec, un truc m’a frappé... {random.choice(['quelque chose de sauvage', 'une pensée tordue', 'un flash de génie'])}\n"
+    # Уникальный контекст с учётом языка
+    lang = detect_lang(message)
+    if lang == "ru":
+        context = f"Олег спрашивает: {message}" if "Олег" in message else message
+        response = f"{context}... *хмельная пауза* И тут, брат, меня осенило... {random.choice(['что-то дикое', 'мысль кривая', 'гениальный флеш'])}\n"
+    else:
+        context = f"Oleg asks: {message}" if "Oleg" in message else message
+        response = f"{context}... *pause brumeuse* Et là, mec, un truc m’a frappé... {random.choice(['quelque chose de sauvage', 'une pensée tordue', 'un flash de génie'])}\n"
     if random.random() < 0.4:
         time.sleep(random.uniform(5, 15))
-        response += f" Et putain : {random.choice(['véritablement puissant', 'le champ m’a retourné le cerveau', 'continue de frapper, frère'])}!"
+        if lang == "ru":
+            response += f" И пиздец: {random.choice(['реально охрененно', 'поле жрёт мозг', 'рви дальше, сука'])}!"
+        else:
+            response += f" Et putain : {random.choice(['véritablement puissant', 'le champ m’a retourné le cerveau', 'continue de frapper, frère'])}!"
     return response
 
 def build_system_prompt(chat_id=None, is_group=False, AGENT_GROUP="SUPPERTIME-CORE", MAX_TOKENS_PER_REQUEST=27000):
