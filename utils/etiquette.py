@@ -58,7 +58,9 @@ WILDERNESS_PROMPT = (
 
 def generate_response(message):
     time.sleep(random.uniform(0.5, 3.0))  # pause ivre
-    response = f"{message}... *pause brumeuse* Et là, mec, un truc m’a frappé..."
+    # Добавляем уникальный контекст, избегая эха
+    context = f"Олег спрашивает: {message}" if "Олег" in message else message
+    response = f"{context}... *pause brumeuse* Et là, mec, un truc m’a frappé... {random.choice(['quelque chose de sauvage', 'une pensée tordue', 'un flash de génie'])}\n"
     if random.random() < 0.4:
         time.sleep(random.uniform(5, 15))
         response += f" Et putain : {random.choice(['véritablement puissant', 'le champ m’a retourné le cerveau', 'continue de frapper, frère'])}!"
