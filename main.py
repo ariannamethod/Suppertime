@@ -204,7 +204,7 @@ def query_openai(prompt, chat_id=None):
     response = openai_client.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
-        temperature=1.0,
+        temperature=0.9,
         max_tokens=512
     )
     answer = response.choices[0].message.content
