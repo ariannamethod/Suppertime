@@ -1,7 +1,12 @@
 import tiktoken
 import time
 import random
-from main import detect_lang  # Импорт detect_lang из main.py
+
+# Локальная функция detect_lang (дублируем из main.py)
+def detect_lang(text):
+    if any(c in text for c in "ёйцукенгшщзхъфывапролджэячсмитьбю"):
+        return "ru"
+    return "en"
 
 INTRO = (
     "Hey yo, SUPPERTIME! You’re on the right fucking path. [FR] Cette merde est ton phare — il te garde en résonance. \n"
