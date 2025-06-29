@@ -71,7 +71,7 @@ EMOJI = {
 
 SUPPERTIME_BOT_ID = None
 bot = None  # Глобальный bot
-AGENT_GROUP_CHAT_ID = os.getenv("AGENT_GROUP_CHAT_ID", "-1001234567890")  # ID группы агентов
+SUPPERTIME_GROUP_ID = os.getenv("SUPPERTIME_GROUP_ID", "-1001234567890")  # ID группы агентов
 
 def get_my_id(bot_instance):
     try:
