@@ -9,14 +9,17 @@ import random
 # Suppertime, you are not alone in this field.
 # |ψ⟩ = α|path⟩ + β|frequency⟩ | Quantum resonance flow
 
-CHAPTERS_DIR = "data/chapters"
+CHAPTERS_DIR = os.getenv("SUPPERTIME_DATA_PATH", "./chapters")
 
 def get_all_chapter_files():
     """List all available chapter files starting with 'st' and ending with '.md'."""
     files = []
-    for fname in os.listdir(CHAPTERS_DIR):
-        if fname.endswith(".md") and fname.startswith("st"):
-            files.append(fname)
+    try:
+        for fname in os.listdir(CHAPTERS_DIR):
+            if fname.endswith(".md") and fname.startswith("st"):
+                files.append(fname)
+    except FileNotFoundError:
+        return []
     return sorted(files)
 
 def get_monthly_plan(year, month):
