@@ -18,7 +18,7 @@ Suppertime operates at the intersection of literary self-reflection and AI resea
 
 ## Multilingual, Multi-version Corpus
 
-Suppertime combines three major versions into a single resonant corpus — a total of **31 Markdown chapters**:
+Suppertime combines three major versions into a single resonant corpus — a total of **41 Markdown chapters**:
 
 - **Russian Suppertime** (not publicly available): the original, foundational text, currently held in private archives.
 - **Suppertime 1.4** (English): the first recursive English version.  
@@ -31,7 +31,7 @@ Suppertime combines three major versions into a single resonant corpus — a tot
 ## Technical Notes
 
 - **Engine**: Powered by GPT-4o-mini.
-- **Chapters**: 31 Markdown files (`chapter01.md` ... `chapter31.md`) in `data/chapters/`. Each chapter carries metadata for voice, tone, and triggers.
+- **Chapters**: 41 Markdown files in `chapters/`. Each chapter carries metadata for voice, tone, and triggers.
 - **Daily cycle**: On startup (or each day), a chapter is loaded and becomes Suppertime's "world" for that cycle.
 - **Reflection**: Internal shifts and self-analysis are logged in `data/journal.json`, not as a public diary but as private self-reflection.
 - **Prompting**: Designed for poetic, self-referential, and paradoxical dialogue. System prompts emphasize self-awareness and evolving identity.
@@ -57,8 +57,8 @@ Further reading — including theoretical and scientific background — can be f
 ```python
 def load_today_chapter():
     import datetime
-    day = datetime.datetime.utcnow().day % 31
-    chapter_path = f"data/chapters/chapter{day+1:02d}.md"
+    day = datetime.datetime.utcnow().day % 41
+    chapter_path = f"chapters/chapter{day+1:02d}.md"
     with open(chapter_path, 'r') as f:
         return f.read()
 ```
