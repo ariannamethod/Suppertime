@@ -398,7 +398,7 @@ def handle_text_message(message, bot_instance):
     if "что происходит в группе" in text.lower():
         if chat_id != int(SUPPERTIME_GROUP_ID):  # Проверяем, не в группе ли уже
             if not CHAT_HISTORY.get(int(SUPPERTIME_GROUP_ID)):
-                bot_instance.send_message(chat_id, "История в группе пуста, брат, нет контекста!")
+                bot_instance.send_message(chat_id, "История в группе пуста, нет контекста!")
                 return
             group_history = get_history_messages(int(SUPPERTIME_GROUP_ID))[-5:]
             if not group_history:
@@ -411,7 +411,7 @@ def handle_text_message(message, bot_instance):
     # Команда "суммируй и напиши в группе"
     if "суммируй и напиши в группе" in text.lower():
         if not CHAT_HISTORY.get(chat_id):
-            bot_instance.send_message(chat_id, "История пуста, брат, нечего суммировать!")
+            bot_instance.send_message(chat_id, "История пуста, нечего суммировать!")
             return
         history = get_history_messages(chat_id)[-5:]  # Берем последние 5 сообщений
         if not history:
