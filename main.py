@@ -19,6 +19,7 @@ import threading
 import time
 import json
 import random
+import hashlib
 from datetime import datetime, timedelta
 from pydub import AudioSegment
 import re
@@ -53,6 +54,15 @@ MAX_PROMPT_TOKENS = 8000
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 ASSISTANT_ID_PATH = os.path.join(SUPPERTIME_DATA_PATH, "assistant_id.txt")
 ASSISTANT_ID = None
+CACHE_PATH = os.path.join(SUPPERTIME_DATA_PATH, "openai_cache.json")
+OPENAI_CACHE = {}
+
+if os.path.exists(CACHE_PATH):
+    try:
+        with open(CACHE_PATH, "r", encoding="utf-8") as f:
+            OPENAI_CACHE = json.load(f)
+    except Exception:
+        OPENAI_CACHE = {}
 
 EMOJI = {
     "voiceon": "🔊",
@@ -157,6 +167,14 @@ def ensure_assistant():
         ASSISTANT_ID = None
     return ASSISTANT_ID
 
+def save_cache():
+    try:
+        os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
+        with open(CACHE_PATH, "w", encoding="utf-8") as f:
+            json.dump(OPENAI_CACHE, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
 SUPPERTIME_BOT_USERNAME = os.getenv("SUPPERTIME_BOT_USERNAME", "suppertime_ain_t_a_bot").lower()
 SUPPERTIME_ALIASES = [
     SUPPERTIME_BOT_USERNAME, "suppertime", "саппертайм", "саппертаймер", "суппертайм"
@@ -234,6 +252,10 @@ def query_openai(prompt, chat_id=None):
     user_msgs = get_history_messages(chat_id) + [{"role": "user", "content": prompt}]
     messages = messages_within_token_limit(base_msgs, user_msgs, MAX_PROMPT_TOKENS)
 
+    cache_key = hashlib.sha1("".join(m.get("role", "") + m.get("content", "") for m in messages).encode("utf-8")).hexdigest()
+    if cache_key in OPENAI_CACHE:
+        return OPENAI_CACHE[cache_key]
+
     ensure_assistant()
     answer = None
     thread_info = CHAT_HISTORY.get(chat_id, {})
@@ -274,6 +296,8 @@ def query_openai(prompt, chat_id=None):
 
     add_history(chat_id, "user", prompt)
     add_history(chat_id, "assistant", answer)
+    OPENAI_CACHE[cache_key] = answer
+    save_cache()
     return answer
 
 def set_voice_mode_on(chat_id):
@@ -378,7 +402,7 @@ def handle_text_message(message, bot_instance):
                 return
             group_history = get_history_messages(int(SUPPERTIME_GROUP_ID))[-5:]
             if not group_history:
-                bot_instance.send_message(chat_id, "Не нашел движухи в группе, сука!")
+                bot_instance.send_message(chat_id, "Не нашел движухи в группе!")
                 return
             summary = query_openai(f"Что происходит в группе на основе этих сообщений: {json.dumps(group_history)}", chat_id=chat_id)
             bot_instance.send_message(chat_id, f"Саппертайм: {summary} #opinions")
@@ -391,7 +415,7 @@ def handle_text_message(message, bot_instance):
             return
         history = get_history_messages(chat_id)[-5:]  # Берем последние 5 сообщений
         if not history:
-            bot_instance.send_message(chat_id, "Не нашел последних разговоров, сука!")
+            bot_instance.send_message(chat_id, "Не нашел последних разговоров!")
             return
         summary = query_openai(f"Суммируй наш последний разговор на основе этих сообщений: {json.dumps(history)}", chat_id=chat_id)
         group_message = f"Саппертайм: {summary} #opinions"
@@ -450,7 +474,7 @@ def handle_text_message(message, bot_instance):
         if image_url:
             bot_instance.send_message(chat_id, f"{EMOJI['image_received']} {image_url}", thread_id=thread_id)
         else:
-            bot_instance.send_message(chat_id, f"{EMOJI['image_generation_error']} Не смог нарисовать, сука, попробуй ещё!")
+            bot_instance.send_message(chat_id, f"{EMOJI['image_generation_error']} Не смог нарисовать, попробуй ещё!")
         return
 
     url_match = re.search(r'(https?://[^\s]+)', text)
