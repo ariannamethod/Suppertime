@@ -117,17 +117,39 @@ def system_prompt_resonator():
     )
 
 def add_history(chat_id, role, content):
-    history = CHAT_HISTORY.get(chat_id, [])
-    history.append({"role": role, "content": content})
-    if len(history) > MAX_HISTORY_MESSAGES:
-        history = history[-MAX_HISTORY_MESSAGES:]
-    CHAT_HISTORY[chat_id] = history
+    chat_info = CHAT_HISTORY.get(chat_id)
+    # Support legacy list-based structure
+    if isinstance(chat_info, list):
+        chat_info = {"thread_id": None, "messages": chat_info}
+    if not chat_info:
+        chat_info = {"thread_id": None, "messages": []}
+
+    msgs = chat_info.get("messages", [])
+    msgs.append({"role": role, "content": content})
+    if len(msgs) > MAX_HISTORY_MESSAGES:
+        msgs = msgs[-MAX_HISTORY_MESSAGES:]
+    chat_info["messages"] = msgs
+    CHAT_HISTORY[chat_id] = chat_info
 
 def clear_history(chat_id):
-    CHAT_HISTORY[chat_id] = []
+    chat_info = CHAT_HISTORY.get(chat_id)
+    if isinstance(chat_info, list):
+        chat_info = {"thread_id": None, "messages": []}
+    if not chat_info:
+        chat_info = {"thread_id": None, "messages": []}
+    else:
+        chat_info["messages"] = []
+    CHAT_HISTORY[chat_id] = chat_info
 
 def get_history_messages(chat_id):
-    return CHAT_HISTORY.get(chat_id, [])
+    chat_info = CHAT_HISTORY.get(chat_id)
+    if isinstance(chat_info, list):
+        # migrate legacy data
+        CHAT_HISTORY[chat_id] = {"thread_id": None, "messages": chat_info}
+        return chat_info
+    if not chat_info:
+        return []
+    return chat_info.get("messages", [])
 
 def count_tokens(messages):
     return sum(len(m.get("content", "")) // 4 for m in messages)
@@ -240,7 +262,7 @@ def query_openai(prompt, chat_id=None):
     lang = USER_LANG.get(chat_id) or detect_lang(prompt)
     USER_LANG[chat_id] = lang
     directive = get_lang_directive(lang)
-system_prompt = (
+    system_prompt = (
         system_prompt_resonator()
         + "\n"
         + directive
@@ -251,23 +273,27 @@ system_prompt = (
     user_msgs = get_history_messages(chat_id) + [{"role": "user", "content": prompt}]
     messages = messages_within_token_limit(base_msgs, user_msgs, MAX_PROMPT_TOKENS)
 
-    )
-    answer = response.choices[0].message.content
-cache_key = hashlib.sha1("".join(m.get("role", "") + m.get("content", "") for m in messages).encode("utf-8")).hexdigest()
+    cache_key = hashlib.sha1(
+        "".join(m.get("role", "") + m.get("content", "") for m in messages).encode("utf-8")
+    ).hexdigest()
     if cache_key in OPENAI_CACHE:
         return OPENAI_CACHE[cache_key]
 
     ensure_assistant()
     answer = None
-    thread_info = CHAT_HISTORY.get(chat_id, {})
-    thread_id = thread_info.get("thread_id")
+    chat_info = CHAT_HISTORY.get(chat_id)
+    if isinstance(chat_info, list):
+        chat_info = {"thread_id": None, "messages": chat_info}
+    if not chat_info:
+        chat_info = {"thread_id": None, "messages": []}
+    thread_id = chat_info.get("thread_id")
     try:
         if ASSISTANT_ID:
             if not thread_id:
                 thread = openai_client.beta.threads.create()
                 thread_id = thread.id
-                thread_info["thread_id"] = thread_id
-                CHAT_HISTORY[chat_id] = thread_info
+                chat_info["thread_id"] = thread_id
+                CHAT_HISTORY[chat_id] = chat_info
             openai_client.beta.threads.messages.create(
                 thread_id=thread_id, role="user", content=prompt
             )
@@ -399,7 +425,7 @@ def handle_text_message(message, bot_instance):
     # Команда "что происходит в группе"
     if "что происходит в группе" in text.lower():
         if chat_id != int(SUPPERTIME_GROUP_ID):  # Проверяем, не в группе ли уже
-            if not CHAT_HISTORY.get(int(SUPPERTIME_GROUP_ID)):
+            if not get_history_messages(int(SUPPERTIME_GROUP_ID)):
                 bot_instance.send_message(chat_id, "История в группе пуста, нет контекста!")
                 return
             group_history = get_history_messages(int(SUPPERTIME_GROUP_ID))[-5:]
@@ -412,7 +438,7 @@ def handle_text_message(message, bot_instance):
 
     # Команда "суммируй и напиши в группе"
     if "суммируй и напиши в группе" in text.lower():
-        if not CHAT_HISTORY.get(chat_id):
+        if not get_history_messages(chat_id):
             bot_instance.send_message(chat_id, "История пуста, нечего суммировать!")
             return
         history = get_history_messages(chat_id)[-5:]  # Берем последние 5 сообщений
