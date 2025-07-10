@@ -1,6 +1,5 @@
 python-dotenv
 fastapi>=0.110.0
-aiogram>=3.0.0
 openai>=1.0.0
 aiohttp
 tiktoken>=0.6.0
