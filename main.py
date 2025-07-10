@@ -257,6 +257,7 @@ def handle_voiceoff_command(message, bot_instance):
 
 def handle_voice_message(message, bot_instance):
     chat_id = message["chat"]["id"]
+    thread_id = message.get("message_thread_id")
     set_audio_mode_whisper(chat_id)
     file_id = message["voice"]["file_id"]
     file_path = bot_instance.get_file_path(file_id)
