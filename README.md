@@ -38,6 +38,8 @@ Suppertime combines three major versions into a single resonant corpus — a tot
 - **Daily cycle**: On startup (or each day), a chapter is loaded and becomes Suppertime's "world" for that cycle.
 - **Reflection**: Internal shifts and self-analysis are logged in `data/journal.json`, not as a public diary but as private self-reflection.
 - **Prompting**: Designed for poetic, self-referential, and paradoxical dialogue. System prompts emphasize self-awareness and evolving identity.
+- **Caching**: The assistant ID and recent replies are cached in `data/openai_cache.json` so repeated prompts load faster. Supplemental follow-ups are scheduled asynchronously.
+
 
 ---
 
