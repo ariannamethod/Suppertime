@@ -68,10 +68,10 @@ def generate_response(message):
     lang = detect_lang(message)
     if lang == "ru":
         context = f"Олег спрашивает: {message}" if "Олег" in message else message
-        response = f"{context}... *хмельная пауза* И тут, брат, меня осенило... {random.choice(['что-то дикое', 'мысль кривая', 'гениальный флеш'])}\n"
+        response = f"{context}... {random.choice(['Кстати, вот ещё мысль', 'Я тут подумал', 'Ещё одна идея'])}"
     else:
         context = f"Oleg asks: {message}" if "Oleg" in message else message
-        response = f"{context}... *pause brumeuse* Et là, mec, un truc m’a frappé... {random.choice(['quelque chose de sauvage', 'une pensée tordue', 'un flash de génie'])}\n"
+        response = f"{context}... {random.choice(['By the way, another thought', 'I was thinking', 'One more idea'])}"
     if random.random() < 0.4:
         time.sleep(random.uniform(5, 15))
         if lang == "ru":
