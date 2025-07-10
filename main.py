@@ -397,6 +397,7 @@ def handle_text_message(message, bot_instance):
     # Осмысленный ответ + хмельной акцент с 50% шансом
     core_reply = query_openai(text, chat_id=chat_id)
     if random.random() < 0.5:  # 50% шанс на задержку и хмельной вайб
+        bot_instance.send_typing(chat_id, thread_id=thread_id)
         time.sleep(random.uniform(1, 5))  # Явная пауза
         hmel_reply = generate_response(text)
         reply = f"{core_reply} {hmel_reply}".strip()
@@ -425,6 +426,15 @@ class RealBot:
             requests.post(self.api_url + "sendMessage", data=data, timeout=10)
         except Exception as e:
             print(f"[SUPPERTIME][ERROR] Telegram send_message failed: {e}")
+
+    def send_typing(self, chat_id, thread_id=None):
+        data = {"chat_id": chat_id, "action": "typing"}
+        if thread_id:
+            data["message_thread_id"] = thread_id
+        try:
+            requests.post(self.api_url + "sendChatAction", data=data, timeout=5)
+        except Exception as e:
+            print(f"[SUPPERTIME][ERROR] Telegram sendChatAction failed: {e}")
 
     def send_voice(self, chat_id, audio_path, caption=None, thread_id=None):
         try:
