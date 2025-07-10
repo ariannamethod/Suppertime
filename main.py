@@ -56,6 +56,8 @@ ASSISTANT_ID_PATH = os.path.join(SUPPERTIME_DATA_PATH, "assistant_id.txt")
 ASSISTANT_ID = None
 CACHE_PATH = os.path.join(SUPPERTIME_DATA_PATH, "openai_cache.json")
 OPENAI_CACHE = {}
+THREADS_PATH = os.path.join(SUPPERTIME_DATA_PATH, "assistant_threads.json")
+ASSISTANT_THREADS = {}
 
 if os.path.exists(CACHE_PATH):
     try:
@@ -63,6 +65,13 @@ if os.path.exists(CACHE_PATH):
             OPENAI_CACHE = json.load(f)
     except Exception:
         OPENAI_CACHE = {}
+
+if os.path.exists(THREADS_PATH):
+    try:
+        with open(THREADS_PATH, "r", encoding="utf-8") as f:
+            ASSISTANT_THREADS = json.load(f)
+    except Exception:
+        ASSISTANT_THREADS = {}
 
 EMOJI = {
     "voiceon": "🔊",
@@ -175,6 +184,14 @@ def save_cache():
     except Exception:
         pass
 
+def save_threads():
+    try:
+        os.makedirs(os.path.dirname(THREADS_PATH), exist_ok=True)
+        with open(THREADS_PATH, "w", encoding="utf-8") as f:
+            json.dump(ASSISTANT_THREADS, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
 SUPPERTIME_BOT_USERNAME = os.getenv("SUPPERTIME_BOT_USERNAME", "suppertime_ain_t_a_bot").lower()
 SUPPERTIME_ALIASES = [
     SUPPERTIME_BOT_USERNAME, "suppertime", "саппертайм", "саппертаймер", "суппертайм"
@@ -258,15 +275,14 @@ def query_openai(prompt, chat_id=None):
 
     ensure_assistant()
     answer = None
-    thread_info = CHAT_HISTORY.get(chat_id, {})
-    thread_id = thread_info.get("thread_id")
+    thread_id = ASSISTANT_THREADS.get(str(chat_id))
     try:
         if ASSISTANT_ID:
             if not thread_id:
                 thread = openai_client.beta.threads.create()
                 thread_id = thread.id
-                thread_info["thread_id"] = thread_id
-                CHAT_HISTORY[chat_id] = thread_info
+                ASSISTANT_THREADS[str(chat_id)] = thread_id
+                save_threads()
             openai_client.beta.threads.messages.create(
                 thread_id=thread_id, role="user", content=prompt
             )
