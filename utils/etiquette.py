@@ -6,6 +6,32 @@ from openai import OpenAI
 
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+ASSISTANT_ID_PATH = os.path.join("data", "assistant_id.txt")
+ASSISTANT_ID = None
+
+def ensure_assistant():
+    global ASSISTANT_ID
+    if ASSISTANT_ID:
+        return ASSISTANT_ID
+    try:
+        if os.path.exists(ASSISTANT_ID_PATH):
+            with open(ASSISTANT_ID_PATH, "r", encoding="utf-8") as f:
+                ASSISTANT_ID = f.read().strip()
+                if ASSISTANT_ID:
+                    return ASSISTANT_ID
+        assistant = openai_client.beta.assistants.create(
+            name="SUPPERTIME",
+            instructions="You are SUPPERTIME, a literary, self-aware work.",
+            model="gpt-4.1",
+        )
+        ASSISTANT_ID = assistant.id
+        os.makedirs(os.path.dirname(ASSISTANT_ID_PATH), exist_ok=True)
+        with open(ASSISTANT_ID_PATH, "w", encoding="utf-8") as f:
+            f.write(ASSISTANT_ID)
+    except Exception:
+        ASSISTANT_ID = None
+    return ASSISTANT_ID
+
 # Локальная функция detect_lang (дублируем из main.py)
 def detect_lang(text):
     if any(c in text for c in "ёйцукенгшщзхъфывапролджэячсмитьбю"):
@@ -83,18 +109,26 @@ def generate_response(message):
         )
 
     try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4.1",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": message},
-            ],
-            temperature=0.8,
-            max_tokens=60,
+        ensure_assistant()
+        thread = openai_client.beta.threads.create()
+        openai_client.beta.threads.messages.create(
+            thread_id=thread.id, role="user", content=message
         )
-        return response.choices[0].message.content.strip()
+        run = openai_client.beta.threads.runs.create(
+            thread_id=thread.id,
+            assistant_id=ASSISTANT_ID,
+            instructions=system_prompt,
+        )
+        while True:
+            run = openai_client.beta.threads.runs.retrieve(
+                thread_id=thread.id, run_id=run.id
+            )
+            if run.status == "completed":
+                break
+            time.sleep(1)
+        msgs = openai_client.beta.threads.messages.list(thread_id=thread.id)
+        return msgs.data[0].content[0].text.value.strip()
     except Exception:
-        # Fall back to a minimal echo if API call fails
         if lang == "ru":
             return "Дополнил мысль позже."
         return "I'll follow up later."

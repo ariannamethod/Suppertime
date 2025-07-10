@@ -271,7 +271,9 @@ def query_openai(prompt, chat_id=None):
                 thread_id=thread_id, role="user", content=prompt
             )
             run = openai_client.beta.threads.runs.create(
-                thread_id=thread_id, assistant_id=ASSISTANT_ID
+                thread_id=thread_id,
+                assistant_id=ASSISTANT_ID,
+                instructions=system_prompt,
             )
             while True:
                 run = openai_client.beta.threads.runs.retrieve(
@@ -286,13 +288,7 @@ def query_openai(prompt, chat_id=None):
         print(f"[SUPPERTIME][ERROR] assistant API failed: {e}")
 
     if not answer:
-        response = openai_client.chat.completions.create(
-            model="gpt-4.1",
-            messages=messages,
-            temperature=0.9,
-            max_tokens=512,
-        )
-        answer = response.choices[0].message.content
+        answer = "[SUPPERTIME][ERROR] Unable to get response"
 
     add_history(chat_id, "user", prompt)
     add_history(chat_id, "assistant", answer)
