@@ -33,7 +33,7 @@ Suppertime combines three major versions into a single resonant corpus — a tot
 
 ## Technical Notes
 
-- **Engine**: Powered by GPT-4o-mini.
+- **Engine**: Powered by GPT-4.1.
 - **Chapters**: 41 Markdown files in `chapters/`. Each chapter carries metadata for voice, tone, and triggers.
 - **Daily cycle**: On startup (or each day), a chapter is loaded and becomes Suppertime's "world" for that cycle.
 - **Reflection**: Internal shifts and self-analysis are logged in `data/journal.json`, not as a public diary but as private self-reflection.
