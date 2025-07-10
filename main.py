@@ -402,7 +402,7 @@ def handle_text_message(message, bot_instance):
                 return
             group_history = get_history_messages(int(SUPPERTIME_GROUP_ID))[-5:]
             if not group_history:
-                bot_instance.send_message(chat_id, "Не нашел движухи в группе!")
+                bot_instance.send_message(chat_id, "Не нашел активности в группе!")
                 return
             summary = query_openai(f"Что происходит в группе на основе этих сообщений: {json.dumps(group_history)}", chat_id=chat_id)
             bot_instance.send_message(chat_id, f"Саппертайм: {summary} #opinions")
