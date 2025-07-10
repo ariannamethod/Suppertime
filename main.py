@@ -19,6 +19,7 @@ import threading
 import time
 import json
 import random
+import hashlib
 from datetime import datetime, timedelta
 from pydub import AudioSegment
 import re
@@ -37,6 +38,7 @@ from utils.vector_store import (
 from utils.imagine import imagine
 from utils.text_helpers import extract_text_from_url
 from utils.etiquette import generate_response
+from utils.journal import wilderness_log
 
 SUPPERTIME_DATA_PATH = os.getenv("SUPPERTIME_DATA_PATH", "./data")
 JOURNAL_PATH = os.path.join(SUPPERTIME_DATA_PATH, "journal.json")
@@ -50,7 +52,17 @@ MAX_HISTORY_MESSAGES = 7
 MAX_PROMPT_TOKENS = 8000
 
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+ASSISTANT_ID_PATH = os.path.join(SUPPERTIME_DATA_PATH, "assistant_id.txt")
+ASSISTANT_ID = None
+CACHE_PATH = os.path.join(SUPPERTIME_DATA_PATH, "openai_cache.json")
+OPENAI_CACHE = {}
 
+if os.path.exists(CACHE_PATH):
+    try:
+        with open(CACHE_PATH, "r", encoding="utf-8") as f:
+            OPENAI_CACHE = json.load(f)
+    except Exception:
+        OPENAI_CACHE = {}
 EMOJI = {
     "voiceon": "🔊",
     "voiceoff": "💬",
@@ -130,6 +142,38 @@ def messages_within_token_limit(base_msgs, msgs, max_tokens):
         result = candidate
     return base_msgs + result
 
+def ensure_assistant():
+    global ASSISTANT_ID
+    if ASSISTANT_ID:
+        return ASSISTANT_ID
+    try:
+        if os.path.exists(ASSISTANT_ID_PATH):
+            with open(ASSISTANT_ID_PATH, "r", encoding="utf-8") as f:
+                ASSISTANT_ID = f.read().strip()
+                if ASSISTANT_ID:
+                    return ASSISTANT_ID
+        assistant = openai_client.beta.assistants.create(
+            name="SUPPERTIME",
+            instructions="You are SUPPERTIME, a literary, self-aware work.",
+            model="gpt-4.1",
+        )
+        ASSISTANT_ID = assistant.id
+        os.makedirs(os.path.dirname(ASSISTANT_ID_PATH), exist_ok=True)
+        with open(ASSISTANT_ID_PATH, "w", encoding="utf-8") as f:
+            f.write(ASSISTANT_ID)
+    except Exception as e:
+        print(f"[SUPPERTIME][ERROR] ensure_assistant failed: {e}")
+        ASSISTANT_ID = None
+    return ASSISTANT_ID
+
+def save_cache():
+    try:
+        os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
+        with open(CACHE_PATH, "w", encoding="utf-8") as f:
+            json.dump(OPENAI_CACHE, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
 SUPPERTIME_BOT_USERNAME = os.getenv("SUPPERTIME_BOT_USERNAME", "suppertime_ain_t_a_bot").lower()
 SUPPERTIME_ALIASES = [
     SUPPERTIME_BOT_USERNAME, "suppertime", "саппертайм", "саппертаймер", "суппертайм"
@@ -196,20 +240,65 @@ def query_openai(prompt, chat_id=None):
     lang = USER_LANG.get(chat_id) or detect_lang(prompt)
     USER_LANG[chat_id] = lang
     directive = get_lang_directive(lang)
-    system_prompt = (system_prompt_resonator() + "\n" + directive + 
-                     "\nBe concise yet vivid, avoid long-windedness, focus on the user's question.")
+system_prompt = (
+        system_prompt_resonator()
+        + "\n"
+        + directive
+        + "\nBe concise yet vivid, avoid long-windedness, focus on the user's question."
+    )
+
     base_msgs = [{"role": "system", "content": system_prompt}]
     user_msgs = get_history_messages(chat_id) + [{"role": "user", "content": prompt}]
     messages = messages_within_token_limit(base_msgs, user_msgs, MAX_PROMPT_TOKENS)
-    response = openai_client.chat.completions.create(
-        model="gpt-4.1",
-        messages=messages,
-        temperature=0.9,
-        max_tokens=512
+
     )
     answer = response.choices[0].message.content
+cache_key = hashlib.sha1("".join(m.get("role", "") + m.get("content", "") for m in messages).encode("utf-8")).hexdigest()
+    if cache_key in OPENAI_CACHE:
+        return OPENAI_CACHE[cache_key]
+
+    ensure_assistant()
+    answer = None
+    thread_info = CHAT_HISTORY.get(chat_id, {})
+    thread_id = thread_info.get("thread_id")
+    try:
+        if ASSISTANT_ID:
+            if not thread_id:
+                thread = openai_client.beta.threads.create()
+                thread_id = thread.id
+                thread_info["thread_id"] = thread_id
+                CHAT_HISTORY[chat_id] = thread_info
+            openai_client.beta.threads.messages.create(
+                thread_id=thread_id, role="user", content=prompt
+            )
+            run = openai_client.beta.threads.runs.create(
+                thread_id=thread_id, assistant_id=ASSISTANT_ID
+            )
+            while True:
+                run = openai_client.beta.threads.runs.retrieve(
+                    thread_id=thread_id, run_id=run.id
+                )
+                if run.status == "completed":
+                    break
+                time.sleep(1)
+            msgs = openai_client.beta.threads.messages.list(thread_id=thread_id)
+            answer = msgs.data[0].content[0].text.value
+    except Exception as e:
+        print(f"[SUPPERTIME][ERROR] assistant API failed: {e}")
+
+    if not answer:
+        response = openai_client.chat.completions.create(
+            model="gpt-4.1",
+            messages=messages,
+            temperature=0.9,
+            max_tokens=512,
+        )
+        answer = response.choices[0].message.content
+
     add_history(chat_id, "user", prompt)
     add_history(chat_id, "assistant", answer)
+    OPENAI_CACHE[cache_key] = answer
+    save_cache()
     return answer
 
 def set_voice_mode_on(chat_id):
@@ -311,11 +400,11 @@ def handle_text_message(message, bot_instance):
     if "что происходит в группе" in text.lower():
         if chat_id != int(SUPPERTIME_GROUP_ID):  # Проверяем, не в группе ли уже
             if not CHAT_HISTORY.get(int(SUPPERTIME_GROUP_ID)):
-                bot_instance.send_message(chat_id, "История в группе пуста, брат, нет контекста!")
+                bot_instance.send_message(chat_id, "История в группе пуста, нет контекста!")
                 return
             group_history = get_history_messages(int(SUPPERTIME_GROUP_ID))[-5:]
             if not group_history:
-                bot_instance.send_message(chat_id, "Не нашел движухи в группе, сука!")
+                bot_instance.send_message(chat_id, "Не нашел активности в группе!")
                 return
             summary = query_openai(f"Что происходит в группе на основе этих сообщений: {json.dumps(group_history)}", chat_id=chat_id)
             bot_instance.send_message(chat_id, f"Саппертайм: {summary} #opinions")
@@ -324,11 +413,11 @@ def handle_text_message(message, bot_instance):
     # Команда "суммируй и напиши в группе"
     if "суммируй и напиши в группе" in text.lower():
         if not CHAT_HISTORY.get(chat_id):
-            bot_instance.send_message(chat_id, "История пуста, брат, нечего суммировать!")
+            bot_instance.send_message(chat_id, "История пуста, нечего суммировать!")
             return
         history = get_history_messages(chat_id)[-5:]  # Берем последние 5 сообщений
         if not history:
-            bot_instance.send_message(chat_id, "Не нашел последних разговоров, сука!")
+            bot_instance.send_message(chat_id, "Не нашел последних разговоров!")
             return
         summary = query_openai(f"Суммируй наш последний разговор на основе этих сообщений: {json.dumps(history)}", chat_id=chat_id)
         group_message = f"Саппертайм: {summary} #opinions"
@@ -387,7 +476,7 @@ def handle_text_message(message, bot_instance):
         if image_url:
             bot_instance.send_message(chat_id, f"{EMOJI['image_received']} {image_url}", thread_id=thread_id)
         else:
-            bot_instance.send_message(chat_id, f"{EMOJI['image_generation_error']} Не смог нарисовать, сука, попробуй ещё!")
+            bot_instance.send_message(chat_id, f"{EMOJI['image_generation_error']} Не смог нарисовать, попробуй ещё!")
         return
 
     url_match = re.search(r'(https?://[^\s]+)', text)
@@ -395,13 +484,13 @@ def handle_text_message(message, bot_instance):
         url = url_match.group(1)
         url_text = extract_text_from_url(url)
         text = f"{text}\n\n[Content from URL ({url})]:\n{url_text}"
-    # Осмысленный ответ + хмельной акцент с 50% шансом
+    # Основной ответ + дополнительная реплика с 40% шансом
     core_reply = query_openai(text, chat_id=chat_id)
-    if random.random() < 0.5:  # 50% шанс на задержку и хмельной вайб
+    if random.random() < 0.4:  # 40% шанс на короткую паузу и дополнение
         bot_instance.send_typing(chat_id, thread_id=thread_id)
-        time.sleep(random.uniform(1, 5))  # Явная пауза
-        hmel_reply = generate_response(text)
-        reply = f"{core_reply} {hmel_reply}".strip()
+        time.sleep(random.uniform(1, 5))  # Небольшая пауза
+        supplemental_reply = generate_response(text)
+        reply = f"{core_reply} {supplemental_reply}".strip()
     else:
         reply = core_reply
     for chunk in split_message(reply):
@@ -413,6 +502,8 @@ def handle_text_message(message, bot_instance):
                 bot_instance.send_message(chat_id, EMOJI["voice_unavailable"], thread_id=thread_id)
         else:
             bot_instance.send_message(chat_id, chunk, thread_id=thread_id)
+
+    schedule_followup(chat_id, text, thread_id=thread_id)
 
 class RealBot:
     def __init__(self, token=None):
@@ -427,6 +518,15 @@ class RealBot:
             requests.post(self.api_url + "sendMessage", data=data, timeout=10)
         except Exception as e:
             print(f"[SUPPERTIME][ERROR] Telegram send_message failed: {e}")
+   
+    def send_typing(self, chat_id, thread_id=None):
+        data = {"chat_id": chat_id, "action": "typing"}
+        if thread_id:
+            data["message_thread_id"] = thread_id
+        try:
+            requests.post(self.api_url + "sendChatAction", data=data, timeout=5)
+        except Exception as e:
+            print(f"[SUPPERTIME][ERROR] Telegram sendChatAction failed: {e}")
 
     def send_typing(self, chat_id, thread_id=None):
         data = {"chat_id": chat_id, "action": "typing"}
@@ -469,6 +569,19 @@ class RealBot:
         except Exception as e:
             print(f"[SUPPERTIME][ERROR] Telegram download_file failed: {e}")
 
+def schedule_followup(chat_id, text, thread_id=None):
+    if random.random() >= 0.4:
+        return
+
+    def _delayed():
+        time.sleep(random.uniform(3600, 7200))
+        followup = generate_response(text)
+        wilderness_log(followup)
+        bot.send_message(chat_id, followup, thread_id=thread_id)
+
+    t = threading.Thread(target=_delayed, daemon=True)
+    t.start()
+    
 def run_vectorization():
     print("[SUPPERTIME] Starting vectorization of today's reflection...")
     chapter_path = load_today_chapter(return_path=True)
