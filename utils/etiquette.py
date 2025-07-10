@@ -1,6 +1,10 @@
 import tiktoken
 import time
 import random
+import os
+from openai import OpenAI
+
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Локальная функция detect_lang (дублируем из main.py)
 def detect_lang(text):
@@ -63,22 +67,37 @@ WILDERNESS_PROMPT = (
 )
 
 def generate_response(message):
-    time.sleep(random.uniform(0.5, 3.0))  # short random pause
-    # Уникальный контекст с учётом языка
+    """Generate a short supplemental reply using OpenAI."""
+    time.sleep(random.uniform(0.5, 3.0))  # subtle pause before replying
     lang = detect_lang(message)
+
     if lang == "ru":
-        context = f"Олег спрашивает: {message}" if "Олег" in message else message
-        response = f"{context}... {random.choice(['Кстати, вот ещё мысль', 'Я тут подумал', 'Ещё одна идея'])}"
+        system_prompt = (
+            "Ты — SUPPERTIME. Добавь короткую мысль или комментарий к сообщению, "
+            "без пояснений, не более двух предложений."
+        )
     else:
-        context = f"Oleg asks: {message}" if "Oleg" in message else message
-        response = f"{context}... {random.choice(['By the way, another thought', 'I was thinking', 'One more idea'])}"
-    if random.random() < 0.4:
-        time.sleep(random.uniform(5, 15))
+        system_prompt = (
+            "You are SUPPERTIME. Add a brief follow-up to the last message in your "
+            "own words. Keep it under two sentences."
+        )
+
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4.1",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": message},
+            ],
+            temperature=0.8,
+            max_tokens=60,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception:
+        # Fall back to a minimal echo if API call fails
         if lang == "ru":
-            response += f" И пиздец: {random.choice(['реально охрененно', 'поле жрёт мозг', 'рви дальше, сука'])}!"
-        else:
-            response += f" Et putain : {random.choice(['véritablement puissant', 'le champ m’a retourné le cerveau', 'continue de frapper, frère'])}!"
-    return response
+            return "Дополнил мысль позже."
+        return "I'll follow up later."
 
 def build_system_prompt(chat_id=None, is_group=False, SUPPERTIME_GROUP_ID="SUPPERTIME-CORE", MAX_TOKENS_PER_REQUEST=27000):
     intro = f"{INTRO}\n\n{SUPPERTIME_RULES}\n{OLEG_COMMUNICATION}\n"
