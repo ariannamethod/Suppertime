@@ -380,10 +380,10 @@ def handle_voice_message(message, bot_instance):
     bot_instance.download_file(file_path, fname)
     audio = AudioSegment.from_file(fname)
     if len(audio) < 500:
-        bot_instance.send_message(chat_id, EMOJI["voice_audio_error"], thread_id=message.get("message_thread_id"))
+        bot_instance.send_message(chat_id, EMOJI["voice_audio_error"], thread_id=thread_id)
         return
     if audio.max < 500:
-        bot_instance.send_message(chat_id, EMOJI["voice_audio_error"], thread_id=message.get("message_thread_id"))
+        bot_instance.send_message(chat_id, EMOJI["voice_audio_error"], thread_id=thread_id)
         return
     with open(fname, "rb") as audio_file:
         transcript = openai_client.audio.transcriptions.create(
@@ -392,7 +392,7 @@ def handle_voice_message(message, bot_instance):
         )
     text = transcript.text.strip()
     if not text:
-        bot_instance.send_message(chat_id, EMOJI["voice_audio_error"], thread_id=message.get("message_thread_id"))
+        bot_instance.send_message(chat_id, EMOJI["voice_audio_error"], thread_id=thread_id)
         return
     if is_spam(chat_id, text):
         return
@@ -401,9 +401,9 @@ def handle_voice_message(message, bot_instance):
         if USER_VOICE_MODE.get(chat_id):
             audio_data = text_to_speech(chunk, lang=USER_LANG.get(chat_id, "en"))
             if audio_data:
-                bot_instance.send_voice(chat_id, audio_data, caption=EMOJI["voice_file_caption"], thread_id=message.get("message_thread_id"))
+                bot_instance.send_voice(chat_id, audio_data, caption=EMOJI["voice_file_caption"], thread_id=thread_id)
             else:
-                bot_instance.send_message(chat_id, EMOJI["voice_unavailable"], thread_id=message.get("message_thread_id"))
+                bot_instance.send_message(chat_id, EMOJI["voice_unavailable"], thread_id=thread_id)
         else:
             bot_instance.send_message(chat_id, chunk, thread_id=thread_id)
 
