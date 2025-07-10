@@ -13,3 +13,4 @@ tenacity
 docx2txt
 striprtf
 odfpy
+aiogram>=3.0.0
