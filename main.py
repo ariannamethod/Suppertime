@@ -84,6 +84,7 @@ EMOJI = {
 SUPPERTIME_BOT_ID = None
 bot = None  # Глобальный bot
 SUPPERTIME_GROUP_ID = os.getenv("SUPPERTIME_GROUP_ID", "-1001234567890")  # Исправлено на SUPPERTIME_GROUP_ID
+CREATOR_CHAT_ID = os.getenv("SUPPERTIME_CHAT_ID")
 
 def get_my_id(bot_instance):
     try:
@@ -676,7 +677,6 @@ def midnight_chapter_rotation(bot_instance):
             # Векторизация после загрузки
             if not chapter_text.startswith("[Resonator]"):
                 run_vectorization()
-        CREATOR_CHAT_ID = os.getenv("SUPPERTIME_CHAT_ID")
         if CREATOR_CHAT_ID:
             try:
                 msg = f"{emoji} Suppertime: новая глава выбрана.\nСегодня: {chapter_title}\nPreview: {chapter_text_full[:100]}"
