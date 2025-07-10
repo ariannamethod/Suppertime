@@ -194,3 +194,4 @@ cython_debug/
 .cursorindexingignore
 data/openai_cache.json
 data/assistant_id.txt
+data/assistant_threads.json
