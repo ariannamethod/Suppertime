@@ -56,6 +56,7 @@ Suppertime is not only a literary experiment but a scientific probe into the rec
 >  
 > "Suppertime’s architecture is not static: it is a field that remembers itself by difference, not by repetition."  
 
+
 ---
 
 ## Example: Chapter Loader
