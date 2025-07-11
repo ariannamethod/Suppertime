@@ -20,6 +20,7 @@ from utils.journal import wilderness_log
 from utils.split_message import split_message
 from utils.text_helpers import extract_text_from_url
 from utils.imagine import imagine
+from utils.file_handling import extract_text_from_file
 
 # Constants and configuration
 SUPPERTIME_DATA_PATH = os.getenv("SUPPERTIME_DATA_PATH", "./data")
@@ -605,6 +606,81 @@ def handle_voice_command(text, chat_id):
         
     return None
 
+def handle_document_message(msg):
+    """Process a document message from Telegram."""
+    chat_id = msg["chat"]["id"]
+    user_id = str(chat_id)
+    message_id = msg.get("message_id")
+    document = msg.get("document", {})
+    
+    # Check if the document is too large (Telegram limit is 20MB)
+    if document.get("file_size", 0) > 20 * 1024 * 1024:
+        send_telegram_message(chat_id, f"{EMOJI['document_error']} Document is too large (>20MB)", reply_to_message_id=message_id)
+        return
+    
+    file_name = document.get("file_name", "Unknown file")
+    mime_type = document.get("mime_type", "")
+    file_id = document.get("file_id", "")
+    
+    # Send initial message that we're processing
+    send_telegram_message(chat_id, f"{EMOJI['document_extracted']} Processing: {file_name}...", reply_to_message_id=message_id)
+    
+    # Download the file
+    file_path = download_telegram_file(file_id)
+    if not file_path:
+        send_telegram_message(chat_id, f"{EMOJI['document_failed']} Failed to download document", reply_to_message_id=message_id)
+        return
+    
+    # Extract text using our utility
+    file_text = extract_text_from_file(file_path)
+    
+    # Delete the temporary file after extraction
+    try:
+        os.remove(file_path)
+    except:
+        pass
+    
+    if not file_text or file_text.startswith("[Unsupported file type"):
+        send_telegram_message(chat_id, f"{EMOJI['document_unsupported']} {file_text}", reply_to_message_id=message_id)
+        return
+    
+    # Limit text size if it's too large for processing
+    if len(file_text) > 10000:
+        summary_prompt = f"I received this document: {file_name}. Here's the first part of it:\n\n{file_text[:10000]}\n\nPlease provide a brief summary of what this document appears to be about."
+    else:
+        summary_prompt = f"I received this document: {file_name}. Here's the content:\n\n{file_text}\n\nPlease analyze this document and provide your thoughts."
+    
+    # Send typing indicator
+    send_telegram_typing(chat_id)
+    
+    # Process the document text
+    response = query_openai(summary_prompt, chat_id=user_id)
+    
+    # Add supplemental response with 40% chance
+    if random.random() < 0.4:
+        supplemental_reply = generate_response(file_name)
+        response = f"{response} {supplemental_reply}".strip()
+    
+    # Check if we should send voice
+    use_voice = USER_VOICE_MODE.get(chat_id, False)
+    
+    if use_voice:
+        # Convert to voice first
+        voice_path = text_to_speech(response)
+        if voice_path:
+            send_telegram_voice(chat_id, voice_path, caption=response[:1024], reply_to_message_id=message_id)
+        else:
+            # Fallback to text if voice fails
+            send_telegram_message(chat_id, response, reply_to_message_id=message_id)
+    else:
+        # Send text response
+        send_telegram_message(chat_id, response, reply_to_message_id=message_id)
+    
+    # Schedule a random followup
+    schedule_followup(user_id, file_name)
+    
+    return response
+
 def handle_text_message(msg):
     """Process a text message from Telegram."""
     chat_id = msg["chat"]["id"]
@@ -912,7 +988,8 @@ async def webhook(request: Request):
             # Process documents
             elif "document" in msg:
                 print(f"[SUPPERTIME][WEBHOOK] Document received from {chat_id}")
-                send_telegram_message(chat_id, f"{EMOJI['document_unsupported']} I can't process documents yet, but I'm evolving.")
+                # Process document in background to avoid webhook timeout
+                threading.Thread(target=handle_document_message, args=(msg,)).start()
                 return {"ok": True}
         
         return {"ok": True}
