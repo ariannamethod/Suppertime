@@ -613,12 +613,17 @@ def query_openai(prompt, chat_id=None):
         return "SUPPERTIME's connection was disrupted. Try again later."
 
 def is_spam(chat_id, text):
-    """Check if a message is spam (duplicate within short timeframe)."""
+    """Decide whether to skip a message as trivial."""
     now = datetime.now()
-    last_msg, last_time = USER_LAST_MESSAGE.get(chat_id, ("", now - timedelta(seconds=120)))
-    if text.strip().lower() == last_msg and (now - last_time).total_seconds() < 60:
-        return True
     USER_LAST_MESSAGE[chat_id] = (text.strip().lower(), now)
+
+    text_lower = text.strip().lower()
+    trivial_phrases = {"ok", "ок", "угу", "ага", "ладно"}
+
+    if len(text_lower) < 10 or text_lower in trivial_phrases:
+        if random.random() < 0.4:  # 40% chance to ignore
+            return True
+
     return False
 
 def log_history(chat_id, text):
@@ -629,14 +634,14 @@ def log_history(chat_id, text):
 
 def schedule_followup(chat_id, text):
     """Schedule a random followup message."""
-    if random.random() >= 0.5:
+    if random.random() >= 0.8:
         return
 
     def _delayed():
-        delay = random.uniform(3600, 7200)  # Between 1-2 hours
+        delay = random.uniform(300, 7200)  # Between 5 min and 2 hours
         time.sleep(delay)
 
-        if random.random() < 0.4:
+        if random.random() < 0.5:
             draft = resonator.get_recent_narrative(1)
             PENDING_DRAFT[chat_id] = draft
             send_telegram_message(chat_id, "У меня есть новый черновик. Хочешь почитать?")
@@ -732,8 +737,8 @@ def handle_document_message(msg):
     # Process the document text
     response = query_openai(summary_prompt, chat_id=user_id)
     
-    # Add supplemental response with 40% chance
-    if random.random() < 0.4:
+    # Add supplemental response with higher chance
+    if random.random() < 0.7:
         supplemental_reply = generate_response(file_name)
         response = f"{response} {supplemental_reply}".strip()
     
@@ -892,8 +897,8 @@ def handle_text_message(msg):
     # Process the message
     response = query_openai(text, chat_id=user_id)
     
-    # Add supplemental response with 40% chance
-    if random.random() < 0.4:
+    # Add supplemental response with higher chance
+    if random.random() < 0.7:
         supplemental_reply = generate_response(text)
         response = f"{response} {supplemental_reply}".strip()
     
@@ -948,8 +953,8 @@ def handle_voice_message(msg):
     # Process the transcribed text
     response = query_openai(transcribed_text, chat_id=user_id)
     
-    # Add supplemental response with 40% chance
-    if random.random() < 0.4:
+    # Add supplemental response with higher chance
+    if random.random() < 0.7:
         supplemental_reply = generate_response(transcribed_text)
         response = f"{response} {supplemental_reply}".strip()
     
