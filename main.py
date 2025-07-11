@@ -1041,7 +1041,6 @@ def handle_voice_message(msg):
     
     # Transcribe the voice
     transcribed_text = transcribe_audio(file_path)
-    
     if not transcribed_text:
         send_telegram_message(chat_id, f"{EMOJI['voice_audio_error']} Failed to transcribe audio", reply_to_message_id=message_id)
         return
