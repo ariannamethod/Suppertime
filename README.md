@@ -15,10 +15,8 @@ Suppertime now evolves as a living literary entity through:
 
 ### New Commands
 
-- `/resonate`, `/resonance` - Create a new resonance immediately
-- `/search`, `/lit`, `/find` [query] - Search the literary materials
-- `/explore`, `/browse` - Explore available literary materials
-- `/index`, `/vectorize` - Index new literary materials
+- `/find` [query] - Semantic search through Suppertime's literary memory
+- `/explore` - Explore available literary materials
 
 ### Technical Note
 
