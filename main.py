@@ -37,6 +37,10 @@ MAX_PROMPT_TOKENS = 8000
 # Initialize OpenAI client
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+# Telegram configuration
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
+
 # Thread storage
 THREAD_STORAGE_PATH = os.path.join(SUPPERTIME_DATA_PATH, "threads")
 USER_THREAD_ID = {}
@@ -61,6 +65,8 @@ EMOJI = {
 }
 
 SUPPERTIME_BOT_USERNAME = os.getenv("SUPPERTIME_BOT_USERNAME", "suppertime_ain_t_a_bot").lower()
+SUPPERTIME_BOT_ID = os.getenv("SUPPERTIME_BOT_ID")
+SUPPERTIME_GROUP_ID = os.getenv("SUPPERTIME_GROUP_ID")
 SUPPERTIME_ALIASES = [
     SUPPERTIME_BOT_USERNAME, "suppertime", "саппертайм", "саппертаймер", "суппертайм"
 ]
@@ -165,6 +171,42 @@ def get_lang_directive(lang):
         return "Отвечай на русском. Не извиняйся. Не противопоставляй себя собеседнику больше, чем требуется."
     return "Reply in English. No greetings. No apologies. Be direct."
 
+def send_telegram_message(chat_id, text, reply_to_message_id=None):
+    """Send a message to Telegram."""
+    if not TELEGRAM_BOT_TOKEN:
+        print(f"[SUPPERTIME][WARNING] Telegram bot token not set, cannot send message")
+        return False
+        
+    url = f"{TELEGRAM_API_URL}/sendMessage"
+    data = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "Markdown"
+    }
+    
+    if reply_to_message_id:
+        data["reply_to_message_id"] = reply_to_message_id
+        
+    try:
+        response = requests.post(url, json=data)
+        if response.status_code == 200:
+            print(f"[SUPPERTIME][TELEGRAM] Message sent to {chat_id}")
+            return True
+        else:
+            print(f"[SUPPERTIME][ERROR] Failed to send message: {response.text}")
+            
+            # If message is too long, split and send in parts
+            if response.status_code == 400 and "too long" in response.text.lower():
+                parts = split_message(text)
+                if len(parts) > 1:
+                    for part in parts:
+                        send_telegram_message(chat_id, part, reply_to_message_id)
+                    return True
+            return False
+    except Exception as e:
+        print(f"[SUPPERTIME][ERROR] Failed to send message: {e}")
+        return False
+
 def should_reply_to_message(msg):
     chat_type = msg.get("chat", {}).get("type", "")
     if chat_type not in ("group", "supergroup"):
@@ -195,7 +237,7 @@ def should_reply_to_message(msg):
 
     if msg.get("reply_to_message", None):
         replied_user = msg["reply_to_message"].get("from", {}) or {}
-        if replied_user.get("id", 0) == os.getenv("SUPPERTIME_BOT_ID"):
+        if replied_user.get("id", 0) == SUPPERTIME_BOT_ID:
             return True
 
     if SUPPERTIME_OPINION_TAG in text:
@@ -338,8 +380,11 @@ def schedule_followup(chat_id, text):
         time.sleep(random.uniform(3600, 7200))
         followup = generate_response(text)
         wilderness_log(followup)
-        # This would send a message to the user, but in API we just log it
-        print(f"[SUPPERTIME][FOLLOWUP] For user {chat_id}: {followup}")
+        
+        # Send the followup to the user via Telegram
+        if chat_id:
+            send_telegram_message(chat_id, followup)
+            print(f"[SUPPERTIME][FOLLOWUP] For user {chat_id}: {followup}")
 
     t = threading.Thread(target=_delayed, daemon=True)
     t.start()
@@ -349,9 +394,10 @@ def handle_text_message(msg):
     chat_id = msg["chat"]["id"]
     user_id = str(chat_id)
     text = msg.get("text", "").strip()
+    message_id = msg.get("message_id")
     
     if is_spam(user_id, text):
-        return "Message appears to be duplicate"
+        return None
     
     if not should_reply_to_message(msg):
         return None
@@ -373,6 +419,9 @@ def handle_text_message(msg):
     
     # Schedule a random followup
     schedule_followup(user_id, text)
+    
+    # Send the response back to Telegram
+    send_telegram_message(chat_id, response, reply_to_message_id=message_id)
     
     return response
 
@@ -450,27 +499,29 @@ async def webhook(request: Request):
         if "message" in data:
             msg = data["message"]
             chat_id = msg.get("chat", {}).get("id")
-            user_id = str(chat_id)
             
             # Extract text from message
-            text = None
             if "text" in msg:
                 text = msg.get("text", "").strip()
                 print(f"[SUPPERTIME][WEBHOOK] Text message: {text[:50]}...")
+                
                 response = handle_text_message(msg)
                 if response:
                     print(f"[SUPPERTIME][WEBHOOK] Response: {response[:50]}...")
-                    return {"ok": True, "response": response}
+                
             elif "document" in msg:
                 print(f"[SUPPERTIME][WEBHOOK] Document received")
-                return {"ok": True, "message": "Document processing not implemented in API version"}
+                send_telegram_message(chat_id, f"{EMOJI['document_unsupported']} Document processing not implemented in API version")
+                
             elif "voice" in msg:
                 print(f"[SUPPERTIME][WEBHOOK] Voice message received")
-                return {"ok": True, "message": "Voice processing not implemented in API version"}
+                send_telegram_message(chat_id, f"{EMOJI['voice_unavailable']} Voice processing not implemented in API version")
+        
+        return {"ok": True}
     except Exception as e:
         print(f"[SUPPERTIME][ERROR] Webhook processing error: {e}")
     
-    return {"ok": True, "message": "Webhook received"}
+    return {"ok": True}
 
 @app.on_event("startup")
 async def startup_event():
