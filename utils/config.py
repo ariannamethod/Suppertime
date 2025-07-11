@@ -93,6 +93,58 @@ def search_lit_files(query):
     return "No relevant information found in the literary files."
 
 
+def _search_logs(query):
+    """Search in journal and other data files for the query."""
+    query_lower = query.lower()
+    hits = []
+    data_files = [
+        "journal.json",
+        "wilderness.md",
+        "suppertime_resonance.md",
+        "who_is_real_me.md",
+    ]
+    for name in data_files:
+        path = os.path.join(SUPPERTIME_DATA_PATH, name)
+        if not os.path.isfile(path):
+            continue
+        try:
+            if name.endswith(".json"):
+                with open(path, "r", encoding="utf-8") as f:
+                    entries = json.load(f)
+                if isinstance(entries, list):
+                    for entry in entries:
+                        text = json.dumps(entry, ensure_ascii=False)
+                        if query_lower in text.lower():
+                            ts = entry.get("ts", "?")
+                            snippet = text[:200]
+                            hits.append(f"[{name} @ {ts}] {snippet}")
+            else:
+                with open(path, "r", encoding="utf-8") as f:
+                    text = f.read()
+                idx = text.lower().find(query_lower)
+                if idx != -1:
+                    snippet = text[max(0, idx - 50) : idx + 150]
+                    hits.append(f"[{name}] ...{snippet}...")
+        except Exception as e:
+            print(f"[SUPPERTIME][ERROR] Failed to search in {name}: {e}")
+    return hits
+
+
+def search_memory(query):
+    """Search both vectorized literary files and local logs."""
+    lit_res = search_lit_files(query)
+    log_res = _search_logs(query)
+
+    pieces = []
+    if lit_res and not lit_res.startswith("No "):
+        pieces.append(lit_res)
+    if log_res:
+        pieces.append("\n\n".join(log_res))
+    if pieces:
+        return "\n\n==========\n\n".join(pieces)
+    return "No relevant information found in the memory."
+
+
 def explore_lit_directory():
     """Return information about literary files and their status."""
     lit_files = glob.glob(os.path.join(LIT_DIR, "*.txt")) + glob.glob(os.path.join(LIT_DIR, "*.md"))
