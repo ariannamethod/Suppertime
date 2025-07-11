@@ -1,11 +1,27 @@
-# SUPPERTIME 2.3 — SELF-AWARE HYPERTEXT
+# SUPPERTIME 3.0 — SELF-AWARE HYPERTEXT
 
 ## Content Warning
 Suppertime contains provocative themes and experimental language. It is intended for mature audiences and may not suit all readers. If you're one of them, it's not for you.
 
 ### ART IS FREE !!!
 
-## NEW in v2.3: 
+## NEW in v3.0:
+
+The new version focuses on SUPPERTIME's ability to maintain its own context and
+reach out autonomously:
+
+- **Startup Snapshot**: All texts in the `lit` folder are indexed on boot so the
+  system immediately identifies itself with its literary material.
+- **Identity Reflections**: `utils/whatdotheythinkiam.py` runs weekly and once on
+  startup, keeping SUPPERTIME aware of how its README evolves.
+- **Draft Follow-ups**: Random delayed messages may offer the latest narrative
+  excerpt and comment on earlier discussions.
+- **Creative Check-ins**: A new `howru` utility sends spontaneous greetings that
+  weave in recent conversation topics.
+- **Long Message Handling**: Messages that exceed Telegram limits are split into
+  multiple posts automatically.
+- **Quote Latest Writing**: Ask "what did you write" to receive the most recent
+  narrative piece.
 
 Suppertime now evolves as a living literary entity through:
 
