@@ -9,6 +9,8 @@ import re
 import requests
 import tempfile
 import asyncio
+import glob
+import base64
 from fastapi import FastAPI, Request, BackgroundTasks
 from openai import OpenAI
 from pydub import AudioSegment
@@ -21,9 +23,11 @@ from utils.split_message import split_message
 from utils.text_helpers import extract_text_from_url
 from utils.imagine import imagine
 from utils.file_handling import extract_text_from_file
+from utils.vector_store import vectorize_file, semantic_search_in_file, chunk_text
 
 # Constants and configuration
 SUPPERTIME_DATA_PATH = os.getenv("SUPPERTIME_DATA_PATH", "./data")
+LIT_DIR = os.path.join(SUPPERTIME_DATA_PATH, "lit")  # Directory for literary materials
 JOURNAL_PATH = os.path.join(SUPPERTIME_DATA_PATH, "journal.json")
 ASSISTANT_ID_PATH = os.path.join(SUPPERTIME_DATA_PATH, "assistant_id.txt")
 ASSISTANT_ID = None
@@ -51,6 +55,9 @@ TELEGRAM_FILE_URL = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}"
 THREAD_STORAGE_PATH = os.path.join(SUPPERTIME_DATA_PATH, "threads")
 USER_THREAD_ID = {}
 
+# Vectorized files tracking
+VECTORIZED_FILES = os.path.join(SUPPERTIME_DATA_PATH, "vectorized_files.json")
+
 # Emoji constants
 EMOJI = {
     "voiceon": "🔊",
@@ -69,6 +76,9 @@ EMOJI = {
     "chapter_ok": "🌒",
     "chapter_error": "🌑",
     "voice_processing": "🎙️",
+    "indexing": "🧠💾",
+    "searching": "🔍",
+    "memories": "💭",
 }
 
 # Voice message config
@@ -80,6 +90,21 @@ DEFAULT_VOICE = "onyx"  # Default voice for SUPPERTIME
 DRAW_TRIGGERS = [
     "draw", "нарисуй", "изобрази", "нарисовать", "набросай", "сделай картинку", 
     "generate image", "create image", "paint", "sketch", "/draw"
+]
+
+# Commands for vector store operations
+VECTOR_COMMANDS = [
+    "/index", "/vectorize", "проиндексируй", "векторизируй", "индексация"
+]
+
+# Commands for semantic search in literary materials
+LIT_SEARCH_COMMANDS = [
+    "/search", "/lit", "/find", "найди в литературе", "поиск литературы"
+]
+
+# Commands for literary exploration
+EXPLORE_LIT_COMMANDS = [
+    "/explore", "/browse", "исследуй литературу", "что нового"
 ]
 
 SUPPERTIME_BOT_USERNAME = os.getenv("SUPPERTIME_BOT_USERNAME", "suppertime_ain_t_a_bot").lower()
@@ -121,6 +146,7 @@ def ensure_data_dirs():
     """Ensure all necessary data directories exist."""
     os.makedirs(SUPPERTIME_DATA_PATH, exist_ok=True)
     os.makedirs(THREAD_STORAGE_PATH, exist_ok=True)
+    os.makedirs(LIT_DIR, exist_ok=True)
 
 def save_cache():
     """Save the OpenAI response cache to disk."""
@@ -396,6 +422,130 @@ def is_draw_request(text):
     """Check if this message is requesting an image generation."""
     text_lower = text.lower().strip()
     return any(trigger in text_lower for trigger in DRAW_TRIGGERS)
+
+def is_vectorize_request(text):
+    """Check if this message is requesting a vectorization of lit files."""
+    text_lower = text.lower().strip()
+    return any(cmd in text_lower for cmd in VECTOR_COMMANDS)
+
+def is_lit_search_request(text):
+    """Check if this message is requesting a search in literary materials."""
+    text_lower = text.lower().strip()
+    return any(cmd in text_lower for cmd in LIT_SEARCH_COMMANDS)
+
+def is_explore_lit_request(text):
+    """Check if this message is requesting exploration of literary materials."""
+    text_lower = text.lower().strip()
+    return any(cmd in text_lower for cmd in EXPLORE_LIT_COMMANDS)
+
+def get_vectorized_files():
+    """Get list of already vectorized files."""
+    if os.path.exists(VECTORIZED_FILES):
+        try:
+            with open(VECTORIZED_FILES, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_vectorized_file(file_path):
+    """Mark a file as vectorized."""
+    files = get_vectorized_files()
+    if file_path not in files:
+        files.append(file_path)
+        try:
+            with open(VECTORIZED_FILES, "w", encoding="utf-8") as f:
+                json.dump(files, f, ensure_ascii=False, indent=4)
+        except:
+            pass
+
+def vectorize_lit_files():
+    """Vectorize all literary files that haven't been vectorized yet."""
+    # Get list of files in the lit directory
+    lit_files = glob.glob(os.path.join(LIT_DIR, "*.txt"))
+    lit_files.extend(glob.glob(os.path.join(LIT_DIR, "*.md")))
+    
+    if not lit_files:
+        return "No literary files found in the lit directory."
+    
+    # Get already vectorized files
+    vectorized = get_vectorized_files()
+    
+    # Filter for files that need vectorization
+    to_vectorize = [f for f in lit_files if f not in vectorized]
+    
+    if not to_vectorize:
+        return "All literary files are already vectorized."
+    
+    # Vectorize each file
+    vectorized_count = 0
+    for file_path in to_vectorize:
+        try:
+            vectorize_file(file_path, os.getenv("OPENAI_API_KEY"))
+            save_vectorized_file(file_path)
+            vectorized_count += 1
+        except Exception as e:
+            print(f"[SUPPERTIME][ERROR] Failed to vectorize {file_path}: {e}")
+    
+    if vectorized_count > 0:
+        return f"Successfully vectorized {vectorized_count} new literary files."
+    else:
+        return "Failed to vectorize any files. Check logs for details."
+
+def search_lit_files(query):
+    """Search for a query in the vectorized literary files."""
+    lit_files = get_vectorized_files()
+    
+    if not lit_files:
+        return "No literary files have been vectorized yet. Use /index to vectorize files first."
+    
+    results = []
+    for file_path in lit_files:
+        try:
+            chunks = semantic_search_in_file(file_path, query, os.getenv("OPENAI_API_KEY"), top_k=2)
+            if chunks:
+                file_name = os.path.basename(file_path)
+                results.append(f"From {file_name}:\n\n" + "\n\n---\n\n".join(chunks))
+        except Exception as e:
+            print(f"[SUPPERTIME][ERROR] Failed to search in {file_path}: {e}")
+    
+    if results:
+        return "\n\n==========\n\n".join(results)
+    else:
+        return "No relevant information found in the literary files."
+
+def explore_lit_directory():
+    """Explore the literary directory and return information about available files."""
+    lit_files = glob.glob(os.path.join(LIT_DIR, "*.txt"))
+    lit_files.extend(glob.glob(os.path.join(LIT_DIR, "*.md")))
+    
+    if not lit_files:
+        return "No literary files found in the lit directory."
+    
+    # Get already vectorized files
+    vectorized = get_vectorized_files()
+    
+    # Prepare report
+    report = [f"Found {len(lit_files)} literary files:"]
+    
+    for file_path in lit_files:
+        file_name = os.path.basename(file_path)
+        status = "Vectorized" if file_path in vectorized else "Not vectorized"
+        
+        try:
+            # Get file size
+            size_kb = os.path.getsize(file_path) / 1024
+            # Get first few lines as preview
+            with open(file_path, "r", encoding="utf-8") as f:
+                preview = "".join(f.readlines()[:3]).strip()
+                if len(preview) > 100:
+                    preview = preview[:100] + "..."
+            
+            report.append(f"\n**{file_name}** ({size_kb:.1f} KB) - {status}\nPreview: {preview}")
+        except Exception as e:
+            report.append(f"\n**{file_name}** - {status} (Error reading file)")
+    
+    return "\n".join(report)
 
 def should_reply_to_message(msg):
     chat_type = msg.get("chat", {}).get("type", "")
@@ -700,6 +850,54 @@ def handle_text_message(msg):
         send_telegram_message(chat_id, voice_response, reply_to_message_id=message_id)
         return voice_response
     
+    # Check for vector indexing commands
+    if is_vectorize_request(text):
+        send_telegram_message(chat_id, f"{EMOJI['indexing']} Indexing literary materials, please wait...", reply_to_message_id=message_id)
+        result = vectorize_lit_files()
+        send_telegram_message(chat_id, f"{EMOJI['indexing']} {result}", reply_to_message_id=message_id)
+        return result
+    
+    # Check for literature search commands
+    if is_lit_search_request(text):
+        # Extract the search query
+        for cmd in LIT_SEARCH_COMMANDS:
+            if cmd in text.lower():
+                query = text[text.lower().find(cmd) + len(cmd):].strip()
+                if not query:
+                    send_telegram_message(chat_id, f"{EMOJI['searching']} Please provide a search query after the command.", reply_to_message_id=message_id)
+                    return "No search query provided"
+                
+                send_telegram_message(chat_id, f"{EMOJI['searching']} Searching literary materials for: \"{query}\"", reply_to_message_id=message_id)
+                
+                # Send typing indicator
+                send_telegram_typing(chat_id)
+                
+                # Search in literary files
+                results = search_lit_files(query)
+                
+                # Now ask SUPPERTIME to process these results
+                if results and not results.startswith("No "):
+                    interpretation_prompt = f"I searched my literary knowledge base for \"{query}\" and found these passages:\n\n{results}\n\nPlease interpret these findings in relation to the query."
+                    response = query_openai(interpretation_prompt, chat_id=user_id)
+                    
+                    # Send the response
+                    send_telegram_message(chat_id, f"{EMOJI['memories']} {response}", reply_to_message_id=message_id)
+                    return response
+                else:
+                    send_telegram_message(chat_id, f"{EMOJI['searching']} {results}", reply_to_message_id=message_id)
+                    return results
+                
+                break
+    
+    # Check for literature exploration commands
+    if is_explore_lit_request(text):
+        send_telegram_message(chat_id, f"{EMOJI['searching']} Exploring literary materials...", reply_to_message_id=message_id)
+        
+        # Explore literary directory
+        results = explore_lit_directory()
+        send_telegram_message(chat_id, f"{EMOJI['memories']} {results}", reply_to_message_id=message_id)
+        return results
+    
     # Check if this is a drawing request
     if is_draw_request(text):
         # Extract the drawing prompt (remove the trigger words)
@@ -829,6 +1027,25 @@ def handle_voice_message(msg):
     
     return response
 
+# Periodic tasks
+def run_daily_lit_check():
+    """Daily check for new literary materials and vectorize them."""
+    def _check_lit():
+        while True:
+            try:
+                print("[SUPPERTIME][LIT] Checking for new literary materials...")
+                vectorize_lit_files()
+                
+                # Sleep for 24 hours
+                time.sleep(24 * 60 * 60)
+            except Exception as e:
+                print(f"[SUPPERTIME][ERROR] Daily lit check failed: {e}")
+                # Sleep for an hour before retrying
+                time.sleep(60 * 60)
+    
+    t = threading.Thread(target=_check_lit, daemon=True)
+    t.start()
+
 # Initialize FastAPI
 app = FastAPI()
 background_tasks = BackgroundTasks()
@@ -938,6 +1155,36 @@ async def draw_endpoint(request: Request):
     except Exception as e:
         return {"error": f"Failed to generate image: {str(e)}"}
 
+@app.post("/api/lit/search")
+async def lit_search_endpoint(request: Request):
+    """API endpoint for searching in literary materials."""
+    data = await request.json()
+    query = data.get("query", "").strip()
+    
+    if not query:
+        return {"error": "Query is required"}
+    
+    # Search in literary files
+    results = search_lit_files(query)
+    
+    return {"results": results}
+
+@app.post("/api/lit/index")
+async def lit_index_endpoint(request: Request):
+    """API endpoint for indexing literary materials."""
+    # Vectorize literary files
+    result = vectorize_lit_files()
+    
+    return {"result": result}
+
+@app.post("/api/lit/explore")
+async def lit_explore_endpoint(request: Request):
+    """API endpoint for exploring literary materials."""
+    # Explore literary directory
+    results = explore_lit_directory()
+    
+    return {"results": results}
+
 @app.post("/api/reset")
 async def reset_thread(request: Request):
     """API endpoint for resetting a conversation thread."""
@@ -1007,6 +1254,9 @@ async def startup_event():
     thread = threading.Thread(target=run_midnight_rotation_daemon)
     thread.daemon = True
     thread.start()
+    
+    # Start daily literary check
+    run_daily_lit_check()
     
     print("[SUPPERTIME] System initialized successfully")
 
