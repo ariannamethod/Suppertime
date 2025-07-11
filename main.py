@@ -39,7 +39,13 @@ from utils.split_message import split_message
 from utils.text_helpers import extract_text_from_url
 from utils.imagine import imagine
 from utils.file_handling import extract_text_from_file
-from utils.config import vectorize_lit_files, search_lit_files, explore_lit_directory, schedule_lit_check
+from utils.config import (
+    vectorize_lit_files,
+    search_lit_files,
+    explore_lit_directory,
+    schedule_lit_check,
+    schedule_identity_reflection,
+)
 from utils.resonator import schedule_resonance_creation, create_resonance_now
 
 # Constants and configuration
@@ -937,6 +943,8 @@ async def startup_event():
     schedule_lit_check()
     # Start resonance creation schedule
     schedule_resonance_creation()
+    # Schedule weekly README reflection
+    schedule_identity_reflection()
     
     print("[SUPPERTIME] System initialized successfully")
 
