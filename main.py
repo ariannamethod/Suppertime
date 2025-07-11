@@ -1040,40 +1040,6 @@ def handle_voice_message(msg):
     if random.random() < 0.4:
         supplemental_reply = generate_response(transcribed_text)
         response = f"{response} {supplemental_reply}".strip()
-    def handle_voice_message(msg):
-    """Process a voice message from Telegram."""
-    chat_id = msg["chat"]["id"]
-    user_id = str(chat_id)
-    message_id = msg.get("message_id")
-    
-    # Send processing indicator
-    send_telegram_message(chat_id, f"{EMOJI['voice_processing']} Transcribing your voice...", reply_to_message_id=message_id)
-    
-    # Download and transcribe the voice
-    file_id = msg["voice"]["file_id"]
-    file_path = download_telegram_file(file_id)
-    
-    if not file_path:
-        send_telegram_message(chat_id, f"{EMOJI['voice_file_caption']} Failed to download voice file", reply_to_message_id=message_id)
-        return
-    
-    # Transcribe the voice
-    transcribed_text = transcribe_audio(file_path)
-    
-    if not transcribed_text:
-        send_telegram_message(chat_id, f"{EMOJI['voice_audio_error']} Failed to transcribe audio", reply_to_message_id=message_id)
-        return
-    
-    # Send typing indicator
-    send_telegram_typing(chat_id)
-    
-    # Process the transcribed text
-    response = query_openai(transcribed_text, chat_id=user_id)
-    
-    # Add supplemental response with 40% chance
-    if random.random() < 0.4:
-        supplemental_reply = generate_response(transcribed_text)
-        response = f"{response} {supplemental_reply}".strip()
     
     # Schedule a random followup
     schedule_followup(user_id, transcribed_text)
@@ -1087,3 +1053,53 @@ def handle_voice_message(msg):
         send_telegram_message(chat_id, response, reply_to_message_id=message_id)
     
     return response
+
+# Create FastAPI app
+app = FastAPI()
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize the SUPPERTIME system."""
+    # Ensure we have an assistant
+    ensure_assistant()
+    
+    # Ensure data directories exist
+    ensure_data_dirs()
+    
+    # Start the midnight rotation daemon in a separate thread
+    thread = threading.Thread(target=run_midnight_rotation_daemon)
+    thread.daemon = True
+    thread.start()
+    
+    # Start resonance creation schedule
+    schedule_resonance_creation()
+    
+    print("[SUPPERTIME] System initialized successfully")
+
+@app.post("/webhook")
+async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
+    """Handle incoming Telegram webhook requests."""
+    data = await request.json()
+    
+    # Check if this is a message
+    if "message" in data:
+        message = data["message"]
+        
+        # Process different message types
+        if "text" in message:
+            # Text message
+            background_tasks.add_task(handle_text_message, message)
+        elif "voice" in message:
+            # Voice message
+            background_tasks.add_task(handle_voice_message, message)
+        elif "document" in message:
+            # Document message
+            background_tasks.add_task(handle_document_message, message)
+    
+    # Always return OK to Telegram
+    return {"ok": True}
+
+@app.get("/")
+async def root():
+    """Root endpoint for health checks."""
+    return {"status": "SUPPERTIME is active", "time": datetime.now().isoformat()}
