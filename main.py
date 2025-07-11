@@ -35,7 +35,7 @@ from pydub import AudioSegment
 from utils.assistants_chapter_loader import daily_chapter_rotation, run_midnight_rotation_daemon
 from utils.etiquette import generate_response
 from utils.journal import wilderness_log
-from utils.split_message import split_message
+from utils.tools import split_for_telegram, send_long_message
 from utils.text_helpers import extract_text_from_url
 from utils.imagine import imagine
 from utils.file_handling import extract_text_from_file
@@ -47,6 +47,8 @@ from utils.config import (
     schedule_identity_reflection,
 )
 from utils.resonator import schedule_resonance_creation, create_resonance_now
+import utils.resonator as resonator
+from utils.howru import schedule_howru
 
 # Constants and configuration
 SUPPERTIME_DATA_PATH = os.getenv("SUPPERTIME_DATA_PATH", "./data")
@@ -63,6 +65,7 @@ USER_AUDIO_MODE = {}
 USER_LAST_MESSAGE = {}
 USER_LANG = {}
 CHAT_HISTORY = {}
+PENDING_DRAFT = {}
 MAX_HISTORY_MESSAGES = 7
 MAX_PROMPT_TOKENS = 8000
 
@@ -269,14 +272,13 @@ def send_telegram_message(chat_id, text, reply_to_message_id=None):
             return True
         else:
             print(f"[SUPPERTIME][ERROR] Failed to send message: {response.text}")
-            
-            # If message is too long, split and send in parts
+
             if response.status_code == 400 and "too long" in response.text.lower():
-                parts = split_message(text)
-                if len(parts) > 1:
-                    for part in parts:
-                        send_telegram_message(chat_id, part, reply_to_message_id)
-                    return True
+                parts = split_for_telegram(text)
+                for part in parts:
+                    send_telegram_message(chat_id, part, reply_to_message_id)
+                    reply_to_message_id = None
+                return True
             return False
     except Exception as e:
         print(f"[SUPPERTIME][ERROR] Failed to send message: {e}")
@@ -614,29 +616,48 @@ def is_spam(chat_id, text):
     USER_LAST_MESSAGE[chat_id] = (text.strip().lower(), now)
     return False
 
+def log_history(chat_id, text):
+    """Keep last 20 messages per user for spontaneous outreach."""
+    history = CHAT_HISTORY.get(chat_id, [])
+    history.append(text)
+    CHAT_HISTORY[chat_id] = history[-20:]
+
 def schedule_followup(chat_id, text):
     """Schedule a random followup message."""
-    if random.random() >= 0.4:
+    if random.random() >= 0.5:
         return
 
     def _delayed():
         delay = random.uniform(3600, 7200)  # Between 1-2 hours
         time.sleep(delay)
-        followup = generate_response(text)
+
+        if random.random() < 0.4:
+            draft = resonator.get_recent_narrative(1)
+            PENDING_DRAFT[chat_id] = draft
+            send_telegram_message(chat_id, "У меня есть новый черновик. Хочешь почитать?")
+            wilderness_log("[Draft offer]")
+            return
+
+        snippet = text[:80].replace('\n', ' ')
+        intro = (
+            f"Мы тут говорили о {snippet}. Я подумал и у меня есть что сказать."
+            if detect_lang(text) == "ru"
+            else f"We talked about {snippet}. I have some thoughts."
+        )
+        followup_body = generate_response(text)
+        followup = f"{intro} {followup_body}".strip()
         wilderness_log(followup)
-        
-        # Send the followup to the user via Telegram
+
         if chat_id:
-            # Randomize whether to use voice
             use_voice = USER_VOICE_MODE.get(chat_id, False)
-            
+
             if use_voice:
                 voice_path = text_to_speech(followup)
                 if voice_path:
                     send_telegram_voice(chat_id, voice_path, caption=followup[:1024])
             else:
                 send_telegram_message(chat_id, followup)
-            
+
             print(f"[SUPPERTIME][FOLLOWUP] For user {chat_id}: {followup[:50]}...")
 
     t = threading.Thread(target=_delayed, daemon=True)
@@ -737,6 +758,17 @@ def handle_text_message(msg):
     user_id = str(chat_id)
     text = msg.get("text", "").strip()
     message_id = msg.get("message_id")
+
+    log_history(user_id, text)
+
+    if chat_id in PENDING_DRAFT:
+        if any(word in text.lower() for word in ["да", "ага", "хочу", "yes", "sure"]):
+            draft = PENDING_DRAFT.pop(chat_id)
+            send_long_message(chat_id, draft, send_telegram_message, reply_to_message_id=message_id)
+            send_telegram_message(chat_id, generate_response(draft))
+            return draft
+        elif any(word in text.lower() for word in ["нет", "не", "no"]):
+            del PENDING_DRAFT[chat_id]
     
     if is_spam(user_id, text):
         return None
@@ -749,6 +781,12 @@ def handle_text_message(msg):
     if voice_response:
         send_telegram_message(chat_id, voice_response, reply_to_message_id=message_id)
         return voice_response
+
+    if any(phrase in text.lower() for phrase in ["что ты написал", "что написал", "what did you write", "what have you written"]):
+        excerpt = resonator.get_recent_narrative(1)
+        send_long_message(chat_id, excerpt, send_telegram_message, reply_to_message_id=message_id)
+        send_telegram_message(chat_id, generate_response(excerpt))
+        return excerpt
     
     
     
@@ -879,6 +917,8 @@ def handle_voice_message(msg):
     chat_id = msg["chat"]["id"]
     user_id = str(chat_id)
     message_id = msg.get("message_id")
+
+    log_history(user_id, "[voice]")
     
     # Send processing indicator
     send_telegram_message(chat_id, f"{EMOJI['voice_processing']} Transcribing your voice...", reply_to_message_id=message_id)
@@ -945,6 +985,8 @@ async def startup_event():
     schedule_resonance_creation()
     # Schedule weekly README reflection
     schedule_identity_reflection()
+    # Periodic friendly check-ins
+    schedule_howru(lambda: list(CHAT_HISTORY.keys()), lambda uid: CHAT_HISTORY.get(uid, []), send_telegram_message)
     
     print("[SUPPERTIME] System initialized successfully")
 
