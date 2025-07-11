@@ -19,6 +19,7 @@ from utils.etiquette import generate_response
 from utils.journal import wilderness_log
 from utils.split_message import split_message
 from utils.text_helpers import extract_text_from_url
+from utils.imagine import imagine
 
 # Constants and configuration
 SUPPERTIME_DATA_PATH = os.getenv("SUPPERTIME_DATA_PATH", "./data")
@@ -73,6 +74,12 @@ EMOJI = {
 TTS_MODEL = "tts-1"
 TTS_VOICES = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]  # Available TTS voices
 DEFAULT_VOICE = "onyx"  # Default voice for SUPPERTIME
+
+# Drawing triggers
+DRAW_TRIGGERS = [
+    "draw", "нарисуй", "изобрази", "нарисовать", "набросай", "сделай картинку", 
+    "generate image", "create image", "paint", "sketch", "/draw"
+]
 
 SUPPERTIME_BOT_USERNAME = os.getenv("SUPPERTIME_BOT_USERNAME", "suppertime_ain_t_a_bot").lower()
 SUPPERTIME_BOT_ID = os.getenv("SUPPERTIME_BOT_ID")
@@ -275,6 +282,36 @@ def send_telegram_voice(chat_id, voice_path, caption=None, reply_to_message_id=N
         except:
             pass
 
+def send_telegram_photo(chat_id, photo_url, caption=None, reply_to_message_id=None):
+    """Send a photo from URL to Telegram."""
+    if not TELEGRAM_BOT_TOKEN:
+        print(f"[SUPPERTIME][WARNING] Telegram bot token not set, cannot send photo")
+        return False
+        
+    url = f"{TELEGRAM_API_URL}/sendPhoto"
+    data = {
+        "chat_id": chat_id,
+        "photo": photo_url
+    }
+    
+    if caption:
+        data["caption"] = caption
+        
+    if reply_to_message_id:
+        data["reply_to_message_id"] = reply_to_message_id
+        
+    try:
+        response = requests.post(url, json=data)
+        if response.status_code == 200:
+            print(f"[SUPPERTIME][TELEGRAM] Photo sent to {chat_id}")
+            return True
+        else:
+            print(f"[SUPPERTIME][ERROR] Failed to send photo: {response.text}")
+            return False
+    except Exception as e:
+        print(f"[SUPPERTIME][ERROR] Failed to send photo: {e}")
+        return False
+
 def download_telegram_file(file_id):
     """Download a file from Telegram."""
     if not TELEGRAM_BOT_TOKEN:
@@ -353,6 +390,11 @@ def text_to_speech(text):
     except Exception as e:
         print(f"[SUPPERTIME][ERROR] Failed to synthesize speech: {e}")
         return None
+
+def is_draw_request(text):
+    """Check if this message is requesting an image generation."""
+    text_lower = text.lower().strip()
+    return any(trigger in text_lower for trigger in DRAW_TRIGGERS)
 
 def should_reply_to_message(msg):
     chat_type = msg.get("chat", {}).get("type", "")
@@ -582,6 +624,49 @@ def handle_text_message(msg):
         send_telegram_message(chat_id, voice_response, reply_to_message_id=message_id)
         return voice_response
     
+    # Check if this is a drawing request
+    if is_draw_request(text):
+        # Extract the drawing prompt (remove the trigger words)
+        for trigger in DRAW_TRIGGERS:
+            if trigger in text.lower():
+                # Remove the trigger and get the remaining text as prompt
+                draw_prompt = text[text.lower().find(trigger) + len(trigger):].strip()
+                if not draw_prompt:
+                    draw_prompt = "A surreal, abstract landscape in the style of SUPPERTIME"
+                
+                # Send typing indicator
+                send_telegram_typing(chat_id)
+                
+                # Let the user know we're generating an image
+                send_telegram_message(chat_id, f"{EMOJI['image_received']} Generating image: \"{draw_prompt}\"", reply_to_message_id=message_id)
+                
+                # Generate image
+                try:
+                    image_url = imagine(draw_prompt)
+                    
+                    # Check if there was an error
+                    if image_url.startswith("Image generation error"):
+                        send_telegram_message(chat_id, f"{EMOJI['image_generation_error']} {image_url}", reply_to_message_id=message_id)
+                        return image_url
+                    
+                    # Create a poetic caption in SUPPERTIME style
+                    caption_prompt = f"Write a short, poetic caption for an image of: {draw_prompt}. Keep it under 100 characters."
+                    caption = query_openai(caption_prompt, chat_id=user_id)
+                    
+                    # Send the image
+                    send_telegram_photo(chat_id, image_url, caption=caption, reply_to_message_id=message_id)
+                    
+                    # Log the creation
+                    wilderness_log(f"Generated image for user {user_id}: {draw_prompt}")
+                    
+                    return f"Generated image: {draw_prompt}"
+                except Exception as e:
+                    error_msg = f"{EMOJI['image_generation_error']} Failed to generate image: {str(e)}"
+                    send_telegram_message(chat_id, error_msg, reply_to_message_id=message_id)
+                    return error_msg
+                
+                break
+    
     # Send typing indicator
     send_telegram_typing(chat_id)
     
@@ -757,6 +842,25 @@ async def voice_endpoint(request: Request):
     schedule_followup(user_id, transcribed_text)
     
     return {"text": response, "audio": base64.b64encode(audio_data).decode('utf-8')}
+
+@app.post("/api/draw")
+async def draw_endpoint(request: Request):
+    """API endpoint for generating images."""
+    data = await request.json()
+    user_id = data.get("user_id", "anonymous")
+    prompt = data.get("prompt", "").strip()
+    
+    if not prompt:
+        return {"error": "Prompt is required"}
+    
+    # Generate image
+    try:
+        image_url = imagine(prompt)
+        if image_url.startswith("Image generation error"):
+            return {"error": image_url}
+        return {"url": image_url}
+    except Exception as e:
+        return {"error": f"Failed to generate image: {str(e)}"}
 
 @app.post("/api/reset")
 async def reset_thread(request: Request):
