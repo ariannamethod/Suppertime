@@ -39,7 +39,14 @@ from utils.split_message import split_message
 from utils.text_helpers import extract_text_from_url
 from utils.imagine import imagine
 from utils.file_handling import extract_text_from_file
-from utils.config import vectorize_lit_files, search_lit_files, explore_lit_directory, schedule_lit_check
+from utils.config import (
+    vectorize_lit_files,
+    search_lit_files,
+    explore_lit_directory,
+    schedule_lit_check,
+    schedule_reflection,
+)
+from utils.whatdotheythinkiam import get_latest_reflection
 from utils.resonator import schedule_resonance_creation, create_resonance_now
 
 # Constants and configuration
@@ -441,6 +448,12 @@ def is_explore_lit_request(text):
     text_lower = text.lower().strip()
     return any(cmd in text_lower for cmd in EXPLORE_LIT_COMMANDS)
 
+
+def is_readme_request(text):
+    """Check if the user is asking about the README."""
+    text_lower = text.lower()
+    return "readme" in text_lower or "ридми" in text_lower
+
 def should_reply_to_message(msg):
     chat_type = msg.get("chat", {}).get("type", "")
     if chat_type not in ("group", "supergroup"):
@@ -781,11 +794,17 @@ def handle_text_message(msg):
     # Check for literature exploration commands
     if is_explore_lit_request(text):
         send_telegram_message(chat_id, f"{EMOJI['searching']} Exploring literary materials...", reply_to_message_id=message_id)
-        
+
         # Explore literary directory
         results = explore_lit_directory()
         send_telegram_message(chat_id, f"{EMOJI['memories']} {results}", reply_to_message_id=message_id)
         return results
+
+    # Check if user asks about the README
+    if is_readme_request(text):
+        reflection = get_latest_reflection()
+        send_telegram_message(chat_id, reflection, reply_to_message_id=message_id)
+        return reflection
     
     # Check if this is a drawing request
     if is_draw_request(text):
@@ -935,6 +954,8 @@ async def startup_event():
     vectorize_lit_files()
     # Schedule regular check for new lit materials
     schedule_lit_check()
+    # Schedule weekly self-reflection on README and resonance
+    schedule_reflection()
     # Start resonance creation schedule
     schedule_resonance_creation()
     

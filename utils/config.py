@@ -5,6 +5,8 @@ import hashlib
 import threading
 import time
 
+from utils.whatdotheythinkiam import run_reflection, schedule_weekly_reflection
+
 from utils.vector_store import vectorize_file, semantic_search_in_file
 
 SUPPERTIME_DATA_PATH = os.getenv("SUPPERTIME_DATA_PATH", "./data")
@@ -119,3 +121,10 @@ def schedule_lit_check(interval_hours=72):
     thread = threading.Thread(target=_loop, daemon=True)
     thread.start()
     return thread
+
+
+def schedule_reflection(initial=True, interval_hours=168):
+    """Schedule weekly self-reflection based on README and resonance."""
+    if initial:
+        run_reflection()
+    return schedule_weekly_reflection(interval_hours)
