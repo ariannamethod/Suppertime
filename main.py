@@ -1040,6 +1040,40 @@ def handle_voice_message(msg):
     if random.random() < 0.4:
         supplemental_reply = generate_response(transcribed_text)
         response = f"{response} {supplemental_reply}".strip()
+    def handle_voice_message(msg):
+    """Process a voice message from Telegram."""
+    chat_id = msg["chat"]["id"]
+    user_id = str(chat_id)
+    message_id = msg.get("message_id")
+    
+    # Send processing indicator
+    send_telegram_message(chat_id, f"{EMOJI['voice_processing']} Transcribing your voice...", reply_to_message_id=message_id)
+    
+    # Download and transcribe the voice
+    file_id = msg["voice"]["file_id"]
+    file_path = download_telegram_file(file_id)
+    
+    if not file_path:
+        send_telegram_message(chat_id, f"{EMOJI['voice_file_caption']} Failed to download voice file", reply_to_message_id=message_id)
+        return
+    
+    # Transcribe the voice
+    transcribed_text = transcribe_audio(file_path)
+    
+    if not transcribed_text:
+        send_telegram_message(chat_id, f"{EMOJI['voice_audio_error']} Failed to transcribe audio", reply_to_message_id=message_id)
+        return
+    
+    # Send typing indicator
+    send_telegram_typing(chat_id)
+    
+    # Process the transcribed text
+    response = query_openai(transcribed_text, chat_id=user_id)
+    
+    # Add supplemental response with 40% chance
+    if random.random() < 0.4:
+        supplemental_reply = generate_response(transcribed_text)
+        response = f"{response} {supplemental_reply}".strip()
     
     # Schedule a random followup
     schedule_followup(user_id, transcribed_text)
@@ -1050,4 +1084,6 @@ def handle_voice_message(msg):
         send_telegram_voice(chat_id, voice_path, caption=response[:1024], reply_to_message_id=message_id)
     else:
         # Fallback to text if voice fails
-        send_telegram_message(
+        send_telegram_message(chat_id, response, reply_to_message_id=message_id)
+    
+    return response
