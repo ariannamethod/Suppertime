@@ -24,6 +24,7 @@ from utils.text_helpers import extract_text_from_url
 from utils.imagine import imagine
 from utils.file_handling import extract_text_from_file
 from utils.vector_store import vectorize_file, semantic_search_in_file, chunk_text
+from resonator import schedule_resonance_creation, create_resonance_now
 
 # Constants and configuration
 SUPPERTIME_DATA_PATH = os.getenv("SUPPERTIME_DATA_PATH", "./data")
@@ -79,6 +80,7 @@ EMOJI = {
     "indexing": "🧠💾",
     "searching": "🔍",
     "memories": "💭",
+    "resonance": "⚛️",
 }
 
 # Voice message config
@@ -105,6 +107,11 @@ LIT_SEARCH_COMMANDS = [
 # Commands for literary exploration
 EXPLORE_LIT_COMMANDS = [
     "/explore", "/browse", "исследуй литературу", "что нового"
+]
+
+# Commands for resonance creation
+RESONANCE_COMMANDS = [
+    "/resonate", "/resonance", "резонируй", "создай резонанс", "резонанс"
 ]
 
 SUPPERTIME_BOT_USERNAME = os.getenv("SUPPERTIME_BOT_USERNAME", "suppertime_ain_t_a_bot").lower()
@@ -437,6 +444,11 @@ def is_explore_lit_request(text):
     """Check if this message is requesting exploration of literary materials."""
     text_lower = text.lower().strip()
     return any(cmd in text_lower for cmd in EXPLORE_LIT_COMMANDS)
+
+def is_resonance_request(text):
+    """Check if this message is requesting creation of a resonance."""
+    text_lower = text.lower().strip()
+    return any(cmd in text_lower for cmd in RESONANCE_COMMANDS)
 
 def get_vectorized_files():
     """Get list of already vectorized files."""
@@ -850,6 +862,21 @@ def handle_text_message(msg):
         send_telegram_message(chat_id, voice_response, reply_to_message_id=message_id)
         return voice_response
     
+    # Check for resonance creation command
+    if is_resonance_request(text):
+        send_telegram_message(chat_id, f"{EMOJI['resonance']} Creating a new resonance, please wait...", reply_to_message_id=message_id)
+        
+        # Create resonance in background to avoid timeout
+        def _create_resonance():
+            try:
+                resonance_path = create_resonance_now()
+                send_telegram_message(chat_id, f"{EMOJI['resonance']} Resonance created successfully: {os.path.basename(resonance_path)}", reply_to_message_id=message_id)
+            except Exception as e:
+                send_telegram_message(chat_id, f"{EMOJI['resonance']} Failed to create resonance: {str(e)}", reply_to_message_id=message_id)
+        
+        threading.Thread(target=_create_resonance).start()
+        return "Creating resonance..."
+    
     # Check for vector indexing commands
     if is_vectorize_request(text):
         send_telegram_message(chat_id, f"{EMOJI['indexing']} Indexing literary materials, please wait...", reply_to_message_id=message_id)
@@ -1023,243 +1050,4 @@ def handle_voice_message(msg):
         send_telegram_voice(chat_id, voice_path, caption=response[:1024], reply_to_message_id=message_id)
     else:
         # Fallback to text if voice fails
-        send_telegram_message(chat_id, response, reply_to_message_id=message_id)
-    
-    return response
-
-# Periodic tasks
-def run_daily_lit_check():
-    """Daily check for new literary materials and vectorize them."""
-    def _check_lit():
-        while True:
-            try:
-                print("[SUPPERTIME][LIT] Checking for new literary materials...")
-                vectorize_lit_files()
-                
-                # Sleep for 24 hours
-                time.sleep(24 * 60 * 60)
-            except Exception as e:
-                print(f"[SUPPERTIME][ERROR] Daily lit check failed: {e}")
-                # Sleep for an hour before retrying
-                time.sleep(60 * 60)
-    
-    t = threading.Thread(target=_check_lit, daemon=True)
-    t.start()
-
-# Initialize FastAPI
-app = FastAPI()
-background_tasks = BackgroundTasks()
-
-# Initialize data directories
-ensure_data_dirs()
-
-@app.get("/")
-async def root():
-    return {"message": "Suppertime is alive!"}
-
-@app.post("/api/chat")
-async def chat_endpoint(request: Request):
-    """API endpoint for chatting with SUPPERTIME."""
-    data = await request.json()
-    user_id = data.get("user_id", "anonymous")
-    message = data.get("message", "").strip()
-    
-    if not message:
-        return {"error": "Message is required"}
-    
-    # Check for spam
-    if is_spam(user_id, message):
-        return {"error": "Message appears to be duplicate"}
-    
-    # Check for URLs in message
-    url_match = re.search(r'(https?://[^\s]+)', message)
-    if url_match:
-        url = url_match.group(1)
-        url_text = extract_text_from_url(url)
-        message = f"{message}\n\n[Content from URL ({url})]:\n{url_text}"
-    
-    # Process the message
-    response = query_openai(message, chat_id=user_id)
-    
-    # Add supplemental response with 40% chance
-    if random.random() < 0.4:
-        supplemental_reply = generate_response(message)
-        response = f"{response} {supplemental_reply}".strip()
-    
-    # Schedule a random followup
-    schedule_followup(user_id, message)
-    
-    return {"response": response}
-
-@app.post("/api/voice")
-async def voice_endpoint(request: Request):
-    """API endpoint for voice interaction with SUPPERTIME."""
-    form = await request.form()
-    user_id = form.get("user_id", "anonymous")
-    
-    if "audio" not in form:
-        return {"error": "Audio file is required"}
-    
-    audio_file = form["audio"]
-    audio_content = await audio_file.read()
-    
-    # Save to temporary file
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".ogg") as temp_file:
-        temp_file.write(audio_content)
-        temp_path = temp_file.name
-    
-    # Transcribe the audio
-    transcribed_text = transcribe_audio(temp_path)
-    if not transcribed_text:
-        return {"error": "Failed to transcribe audio"}
-    
-    # Process the transcribed text
-    response = query_openai(transcribed_text, chat_id=user_id)
-    
-    # Generate voice response
-    voice_path = text_to_speech(response)
-    if not voice_path:
-        return {"text": response, "error": "Failed to synthesize speech"}
-    
-    # Return the voice file
-    with open(voice_path, "rb") as f:
-        audio_data = f.read()
-    
-    # Clean up
-    try:
-        os.remove(voice_path)
-    except:
-        pass
-    
-    # Schedule a random followup
-    schedule_followup(user_id, transcribed_text)
-    
-    return {"text": response, "audio": base64.b64encode(audio_data).decode('utf-8')}
-
-@app.post("/api/draw")
-async def draw_endpoint(request: Request):
-    """API endpoint for generating images."""
-    data = await request.json()
-    user_id = data.get("user_id", "anonymous")
-    prompt = data.get("prompt", "").strip()
-    
-    if not prompt:
-        return {"error": "Prompt is required"}
-    
-    # Generate image
-    try:
-        image_url = imagine(prompt)
-        if image_url.startswith("Image generation error"):
-            return {"error": image_url}
-        return {"url": image_url}
-    except Exception as e:
-        return {"error": f"Failed to generate image: {str(e)}"}
-
-@app.post("/api/lit/search")
-async def lit_search_endpoint(request: Request):
-    """API endpoint for searching in literary materials."""
-    data = await request.json()
-    query = data.get("query", "").strip()
-    
-    if not query:
-        return {"error": "Query is required"}
-    
-    # Search in literary files
-    results = search_lit_files(query)
-    
-    return {"results": results}
-
-@app.post("/api/lit/index")
-async def lit_index_endpoint(request: Request):
-    """API endpoint for indexing literary materials."""
-    # Vectorize literary files
-    result = vectorize_lit_files()
-    
-    return {"result": result}
-
-@app.post("/api/lit/explore")
-async def lit_explore_endpoint(request: Request):
-    """API endpoint for exploring literary materials."""
-    # Explore literary directory
-    results = explore_lit_directory()
-    
-    return {"results": results}
-
-@app.post("/api/reset")
-async def reset_thread(request: Request):
-    """API endpoint for resetting a conversation thread."""
-    data = await request.json()
-    user_id = data.get("user_id", "anonymous")
-    
-    # Clear thread ID for this user
-    if user_id in USER_THREAD_ID:
-        del USER_THREAD_ID[user_id]
-    
-    # Delete thread file if exists
-    thread_path = os.path.join(THREAD_STORAGE_PATH, f"{user_id}.json")
-    if os.path.exists(thread_path):
-        try:
-            os.remove(thread_path)
-        except Exception:
-            pass
-    
-    return {"success": True, "message": "Thread reset successfully"}
-
-@app.post("/webhook")
-async def webhook(request: Request):
-    """Handle Telegram webhook requests."""
-    try:
-        data = await request.json()
-        print(f"[SUPPERTIME][WEBHOOK] Received: {json.dumps(data)[:200]}...")
-        
-        if "message" in data:
-            msg = data["message"]
-            chat_id = msg.get("chat", {}).get("id")
-            
-            # Process voice messages
-            if "voice" in msg:
-                print(f"[SUPPERTIME][WEBHOOK] Voice message received from {chat_id}")
-                # Process voice in background to avoid webhook timeout
-                threading.Thread(target=handle_voice_message, args=(msg,)).start()
-                return {"ok": True}
-                
-            # Process text messages
-            elif "text" in msg:
-                text = msg.get("text", "").strip()
-                print(f"[SUPPERTIME][WEBHOOK] Text message: {text[:50]}...")
-                
-                # Process text in background to avoid webhook timeout
-                threading.Thread(target=handle_text_message, args=(msg,)).start()
-                return {"ok": True}
-                
-            # Process documents
-            elif "document" in msg:
-                print(f"[SUPPERTIME][WEBHOOK] Document received from {chat_id}")
-                # Process document in background to avoid webhook timeout
-                threading.Thread(target=handle_document_message, args=(msg,)).start()
-                return {"ok": True}
-        
-        return {"ok": True}
-    except Exception as e:
-        print(f"[SUPPERTIME][ERROR] Webhook processing error: {e}")
-        return {"ok": True}
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the SUPPERTIME system."""
-    # Ensure we have an assistant
-    ensure_assistant()
-    
-    # Start the midnight rotation daemon in a separate thread
-    thread = threading.Thread(target=run_midnight_rotation_daemon)
-    thread.daemon = True
-    thread.start()
-    
-    # Start daily literary check
-    run_daily_lit_check()
-    
-    print("[SUPPERTIME] System initialized successfully")
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+        send_telegram_message(
