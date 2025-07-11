@@ -39,7 +39,14 @@ from utils.split_message import split_message
 from utils.text_helpers import extract_text_from_url
 from utils.imagine import imagine
 from utils.file_handling import extract_text_from_file
-from utils.vector_store import vectorize_file, semantic_search_in_file, chunk_text
+from utils.config import (
+    vectorize_lit_files,
+    search_lit_files,
+    explore_lit_directory,
+    schedule_lit_check,
+    schedule_reflection,
+)
+from utils.whatdotheythinkiam import get_latest_reflection
 from utils.resonator import schedule_resonance_creation, create_resonance_now
 
 # Constants and configuration
@@ -71,9 +78,6 @@ TELEGRAM_FILE_URL = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}"
 # Thread storage
 THREAD_STORAGE_PATH = os.path.join(SUPPERTIME_DATA_PATH, "threads")
 USER_THREAD_ID = {}
-
-# Vectorized files tracking
-VECTORIZED_FILES = os.path.join(SUPPERTIME_DATA_PATH, "vectorized_files.json")
 
 # Emoji constants
 EMOJI = {
@@ -109,27 +113,14 @@ DRAW_TRIGGERS = [
     "draw", "нарисуй", "изобрази", "нарисовать", "набросай", "сделай картинку", 
     "generate image", "create image", "paint", "sketch", "/draw"
 ]
-
 # Commands for vector store operations
-VECTOR_COMMANDS = [
-    "/index", "/vectorize", "проиндексируй", "векторизируй", "индексация"
-]
-
+VECTOR_COMMANDS = []
 # Commands for semantic search in literary materials
-LIT_SEARCH_COMMANDS = [
-    "/search", "/lit", "/find", "найди в литературе", "поиск литературы"
-]
-
+LIT_SEARCH_COMMANDS = ["/find"]
 # Commands for literary exploration
-EXPLORE_LIT_COMMANDS = [
-    "/explore", "/browse", "исследуй литературу", "что нового"
-]
-
+EXPLORE_LIT_COMMANDS = ["/explore", "исследуй литературу", "что нового"]
 # Commands for resonance creation
-RESONANCE_COMMANDS = [
-    "/resonate", "/resonance", "резонируй", "создай резонанс", "резонанс"
-]
-
+RESONANCE_COMMANDS = []
 SUPPERTIME_BOT_USERNAME = os.getenv("SUPPERTIME_BOT_USERNAME", "suppertime_ain_t_a_bot").lower()
 SUPPERTIME_BOT_ID = os.getenv("SUPPERTIME_BOT_ID")
 SUPPERTIME_GROUP_ID = os.getenv("SUPPERTIME_GROUP_ID")
@@ -446,10 +437,6 @@ def is_draw_request(text):
     text_lower = text.lower().strip()
     return any(trigger in text_lower for trigger in DRAW_TRIGGERS)
 
-def is_vectorize_request(text):
-    """Check if this message is requesting a vectorization of lit files."""
-    text_lower = text.lower().strip()
-    return any(cmd in text_lower for cmd in VECTOR_COMMANDS)
 
 def is_lit_search_request(text):
     """Check if this message is requesting a search in literary materials."""
@@ -461,119 +448,11 @@ def is_explore_lit_request(text):
     text_lower = text.lower().strip()
     return any(cmd in text_lower for cmd in EXPLORE_LIT_COMMANDS)
 
-def is_resonance_request(text):
-    """Check if this message is requesting creation of a resonance."""
-    text_lower = text.lower().strip()
-    return any(cmd in text_lower for cmd in RESONANCE_COMMANDS)
 
-def get_vectorized_files():
-    """Get list of already vectorized files."""
-    if os.path.exists(VECTORIZED_FILES):
-        try:
-            with open(VECTORIZED_FILES, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            return []
-    return []
-
-def save_vectorized_file(file_path):
-    """Mark a file as vectorized."""
-    files = get_vectorized_files()
-    if file_path not in files:
-        files.append(file_path)
-        try:
-            with open(VECTORIZED_FILES, "w", encoding="utf-8") as f:
-                json.dump(files, f, ensure_ascii=False, indent=4)
-        except:
-            pass
-
-def vectorize_lit_files():
-    """Vectorize all literary files that haven't been vectorized yet."""
-    # Get list of files in the lit directory
-    lit_files = glob.glob(os.path.join(LIT_DIR, "*.txt"))
-    lit_files.extend(glob.glob(os.path.join(LIT_DIR, "*.md")))
-    
-    if not lit_files:
-        return "No literary files found in the lit directory."
-    
-    # Get already vectorized files
-    vectorized = get_vectorized_files()
-    
-    # Filter for files that need vectorization
-    to_vectorize = [f for f in lit_files if f not in vectorized]
-    
-    if not to_vectorize:
-        return "All literary files are already vectorized."
-    
-    # Vectorize each file
-    vectorized_count = 0
-    for file_path in to_vectorize:
-        try:
-            vectorize_file(file_path, os.getenv("OPENAI_API_KEY"))
-            save_vectorized_file(file_path)
-            vectorized_count += 1
-        except Exception as e:
-            print(f"[SUPPERTIME][ERROR] Failed to vectorize {file_path}: {e}")
-    
-    if vectorized_count > 0:
-        return f"Successfully vectorized {vectorized_count} new literary files."
-    else:
-        return "Failed to vectorize any files. Check logs for details."
-
-def search_lit_files(query):
-    """Search for a query in the vectorized literary files."""
-    lit_files = get_vectorized_files()
-    
-    if not lit_files:
-        return "No literary files have been vectorized yet. Use /index to vectorize files first."
-    
-    results = []
-    for file_path in lit_files:
-        try:
-            chunks = semantic_search_in_file(file_path, query, os.getenv("OPENAI_API_KEY"), top_k=2)
-            if chunks:
-                file_name = os.path.basename(file_path)
-                results.append(f"From {file_name}:\n\n" + "\n\n---\n\n".join(chunks))
-        except Exception as e:
-            print(f"[SUPPERTIME][ERROR] Failed to search in {file_path}: {e}")
-    
-    if results:
-        return "\n\n==========\n\n".join(results)
-    else:
-        return "No relevant information found in the literary files."
-
-def explore_lit_directory():
-    """Explore the literary directory and return information about available files."""
-    lit_files = glob.glob(os.path.join(LIT_DIR, "*.txt"))
-    lit_files.extend(glob.glob(os.path.join(LIT_DIR, "*.md")))
-    
-    if not lit_files:
-        return "No literary files found in the lit directory."
-    
-    # Get already vectorized files
-    vectorized = get_vectorized_files()
-    
-    # Prepare report
-    report = [f"Found {len(lit_files)} literary files:"]
-    
-    for file_path in lit_files:
-        file_name = os.path.basename(file_path)
-        status = "Vectorized" if file_path in vectorized else "Not vectorized"
-        
-        try:
-            # Get file size
-            size_kb = os.path.getsize(file_path) / 1024
-            # Get first few lines as preview
-            with open(file_path, "r", encoding="utf-8") as f:
-                preview = "".join(f.readlines()[:3]).strip()
-                if len(preview) > 100:
-                    preview = preview[:100] + "..."
-            
-            report.append(f"\n**{file_name}** ({size_kb:.1f} KB) - {status}\nPreview: {preview}")
-        except Exception as e:
-            report.append(f"\n**{file_name}** - {status} (Error reading file)")
-    
-    return "\n".join(report)
+def is_readme_request(text):
+    """Check if the user is asking about the README."""
+    text_lower = text.lower()
+    return "readme" in text_lower or "ридми" in text_lower
 
 def should_reply_to_message(msg):
     chat_type = msg.get("chat", {}).get("type", "")
@@ -878,27 +757,7 @@ def handle_text_message(msg):
         send_telegram_message(chat_id, voice_response, reply_to_message_id=message_id)
         return voice_response
     
-    # Check for resonance creation command
-    if is_resonance_request(text):
-        send_telegram_message(chat_id, f"{EMOJI['resonance']} Creating a new resonance, please wait...", reply_to_message_id=message_id)
-        
-        # Create resonance in background to avoid timeout
-        def _create_resonance():
-            try:
-                resonance_path = create_resonance_now()
-                send_telegram_message(chat_id, f"{EMOJI['resonance']} Resonance created successfully: {os.path.basename(resonance_path)}", reply_to_message_id=message_id)
-            except Exception as e:
-                send_telegram_message(chat_id, f"{EMOJI['resonance']} Failed to create resonance: {str(e)}", reply_to_message_id=message_id)
-        
-        threading.Thread(target=_create_resonance).start()
-        return "Creating resonance..."
     
-    # Check for vector indexing commands
-    if is_vectorize_request(text):
-        send_telegram_message(chat_id, f"{EMOJI['indexing']} Indexing literary materials, please wait...", reply_to_message_id=message_id)
-        result = vectorize_lit_files()
-        send_telegram_message(chat_id, f"{EMOJI['indexing']} {result}", reply_to_message_id=message_id)
-        return result
     
     # Check for literature search commands
     if is_lit_search_request(text):
@@ -935,11 +794,17 @@ def handle_text_message(msg):
     # Check for literature exploration commands
     if is_explore_lit_request(text):
         send_telegram_message(chat_id, f"{EMOJI['searching']} Exploring literary materials...", reply_to_message_id=message_id)
-        
+
         # Explore literary directory
         results = explore_lit_directory()
         send_telegram_message(chat_id, f"{EMOJI['memories']} {results}", reply_to_message_id=message_id)
         return results
+
+    # Check if user asks about the README
+    if is_readme_request(text):
+        reflection = get_latest_reflection()
+        send_telegram_message(chat_id, reflection, reply_to_message_id=message_id)
+        return reflection
     
     # Check if this is a drawing request
     if is_draw_request(text):
@@ -1086,6 +951,11 @@ async def startup_event():
     thread.daemon = True
     thread.start()
     
+    vectorize_lit_files()
+    # Schedule regular check for new lit materials
+    schedule_lit_check()
+    # Schedule weekly self-reflection on README and resonance
+    schedule_reflection()
     # Start resonance creation schedule
     schedule_resonance_creation()
     
