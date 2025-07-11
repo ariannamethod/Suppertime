@@ -17,6 +17,10 @@ from utils.assistants_chapter_loader import (
 # Directory constants
 SUPPERTIME_DATA_PATH = os.getenv("SUPPERTIME_DATA_PATH", "./data")
 LIT_DIR = os.path.join(SUPPERTIME_DATA_PATH, "lit")
+if not os.path.isdir(LIT_DIR):
+    fallback = "./lit"
+    if os.path.isdir(fallback):
+        LIT_DIR = fallback
 RESONANCE_PROTOCOL_PATH = os.path.join(SUPPERTIME_DATA_PATH, "suppertime_resonance.md")
 
 # Ensure directories exist

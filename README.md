@@ -20,6 +20,9 @@ Suppertime now evolves as a living literary entity through:
 - `/explore`, `/browse` - Explore available literary materials
 - `/index`, `/vectorize` - Index new literary materials
 
+The bot looks for literary files in `./data/lit` by default, but will fall back
+to a top-level `./lit` directory if it exists.
+
 ### Technical Note
 
 ### System Check (v3.0)

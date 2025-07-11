@@ -52,7 +52,12 @@ from utils.howru import schedule_howru
 
 # Constants and configuration
 SUPPERTIME_DATA_PATH = os.getenv("SUPPERTIME_DATA_PATH", "./data")
-LIT_DIR = os.path.join(SUPPERTIME_DATA_PATH, "lit")  # Directory for literary materials
+LIT_DIR = os.path.join(SUPPERTIME_DATA_PATH, "lit")
+if not os.path.isdir(LIT_DIR):
+    fallback = "./lit"
+    if os.path.isdir(fallback):
+        LIT_DIR = fallback
+# Directory for literary materials
 JOURNAL_PATH = os.path.join(SUPPERTIME_DATA_PATH, "journal.json")
 ASSISTANT_ID_PATH = os.path.join(SUPPERTIME_DATA_PATH, "assistant_id.txt")
 ASSISTANT_ID = None

@@ -11,6 +11,11 @@ from utils.vector_store import vectorize_file, semantic_search_in_file
 
 SUPPERTIME_DATA_PATH = os.getenv("SUPPERTIME_DATA_PATH", "./data")
 LIT_DIR = os.path.join(SUPPERTIME_DATA_PATH, "lit")
+if not os.path.isdir(LIT_DIR):
+    fallback = "./lit"
+    if os.path.isdir(fallback):
+        LIT_DIR = fallback
+
 SNAPSHOT_PATH = os.path.join(SUPPERTIME_DATA_PATH, "vectorized_snapshot.json")
 
 
