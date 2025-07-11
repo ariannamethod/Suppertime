@@ -35,7 +35,7 @@ from pydub import AudioSegment
 from utils.assistants_chapter_loader import daily_chapter_rotation, run_midnight_rotation_daemon
 from utils.etiquette import generate_response
 from utils.journal import wilderness_log
-from utils.split_message import split_message
+from utils.tools import split_long_text, choose_greeting
 from utils.text_helpers import extract_text_from_url
 from utils.imagine import imagine
 from utils.file_handling import extract_text_from_file
@@ -77,6 +77,8 @@ TELEGRAM_FILE_URL = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}"
 # Thread storage
 THREAD_STORAGE_PATH = os.path.join(SUPPERTIME_DATA_PATH, "threads")
 USER_THREAD_ID = {}
+HOWRU_THREADS = {}
+DRAFT_OFFERS = {}
 
 # Emoji constants
 EMOJI = {
@@ -270,9 +272,9 @@ def send_telegram_message(chat_id, text, reply_to_message_id=None):
         else:
             print(f"[SUPPERTIME][ERROR] Failed to send message: {response.text}")
             
-            # If message is too long, split and send in parts
+            # If message is too long, split and resend in parts
             if response.status_code == 400 and "too long" in response.text.lower():
-                parts = split_message(text)
+                parts = split_long_text(text)
                 if len(parts) > 1:
                     for part in parts:
                         send_telegram_message(chat_id, part, reply_to_message_id)
@@ -615,13 +617,17 @@ def is_spam(chat_id, text):
     return False
 
 def schedule_followup(chat_id, text):
-    """Schedule a random followup message."""
-    if random.random() >= 0.4:
+    """Schedule a random followup message and occasionally offer a draft."""
+    if random.random() >= 0.5:
         return
 
     def _delayed():
         delay = random.uniform(3600, 7200)  # Between 1-2 hours
         time.sleep(delay)
+        if random.random() < 0.4:
+            draft = generate_response(f"Напиши короткий черновик о '{text}'")
+            DRAFT_OFFERS[chat_id] = draft
+            send_telegram_message(chat_id, "У меня есть новый черновик. Хочешь почитать?")
         followup = generate_response(text)
         wilderness_log(followup)
         
@@ -706,8 +712,8 @@ def handle_document_message(msg):
     # Process the document text
     response = query_openai(summary_prompt, chat_id=user_id)
     
-    # Add supplemental response with 40% chance
-    if random.random() < 0.4:
+    # Add supplemental response with 50% chance
+    if random.random() < 0.5:
         supplemental_reply = generate_response(file_name)
         response = f"{response} {supplemental_reply}".strip()
     
@@ -749,6 +755,40 @@ def handle_text_message(msg):
     if voice_response:
         send_telegram_message(chat_id, voice_response, reply_to_message_id=message_id)
         return voice_response
+
+    # If a draft offer was sent earlier and user agrees
+    if chat_id in DRAFT_OFFERS and text.lower() in {"да", "хочу", "давай", "конечно"}:
+        draft = DRAFT_OFFERS.pop(chat_id)
+        send_telegram_message(chat_id, draft, reply_to_message_id=message_id)
+        comment = generate_response(draft)
+        send_telegram_message(chat_id, comment, reply_to_message_id=message_id)
+        return draft
+
+    # Store history for howru
+    history = CHAT_HISTORY.setdefault(chat_id, [])
+    history.append(text)
+    if len(history) > 20:
+        history.pop(0)
+
+    # Start daily how-are-you messages for this chat
+    if chat_id not in HOWRU_THREADS:
+        from utils.howru import schedule_howru
+        HOWRU_THREADS[chat_id] = schedule_howru(lambda c, m: send_telegram_message(c, m), chat_id, history_provider=lambda: CHAT_HISTORY.get(chat_id, []))
+
+    # User wants to know what has been written recently
+    if any(phrase in text.lower() for phrase in ["что ты написал", "что написал", "что ты писал", "что писал"]):
+        from utils.resonator import get_recent_narrative
+        snippet = get_recent_narrative(1)
+        send_telegram_message(chat_id, snippet, reply_to_message_id=message_id)
+        comment = generate_response(snippet)
+        send_telegram_message(chat_id, comment, reply_to_message_id=message_id)
+        return snippet
+
+    if "readme" in text.lower():
+        from utils.whatdotheythinkiam import latest_reflection
+        notes = latest_reflection()
+        send_telegram_message(chat_id, notes, reply_to_message_id=message_id)
+        return notes
     
     
     
@@ -849,8 +889,8 @@ def handle_text_message(msg):
     # Process the message
     response = query_openai(text, chat_id=user_id)
     
-    # Add supplemental response with 40% chance
-    if random.random() < 0.4:
+    # Add supplemental response with 50% chance
+    if random.random() < 0.5:
         supplemental_reply = generate_response(text)
         response = f"{response} {supplemental_reply}".strip()
     
@@ -903,8 +943,8 @@ def handle_voice_message(msg):
     # Process the transcribed text
     response = query_openai(transcribed_text, chat_id=user_id)
     
-    # Add supplemental response with 40% chance
-    if random.random() < 0.4:
+    # Add supplemental response with 50% chance
+    if random.random() < 0.5:
         supplemental_reply = generate_response(transcribed_text)
         response = f"{response} {supplemental_reply}".strip()
     
