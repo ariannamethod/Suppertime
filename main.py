@@ -7,8 +7,11 @@ import hashlib
 from datetime import datetime, timedelta
 import re
 import requests
-from fastapi import FastAPI, Request
+import tempfile
+import asyncio
+from fastapi import FastAPI, Request, BackgroundTasks
 from openai import OpenAI
+from pydub import AudioSegment
 
 # Import our new chapter rotation system
 from utils.assistants_chapter_loader import daily_chapter_rotation, run_midnight_rotation_daemon
@@ -26,7 +29,7 @@ CACHE_PATH = os.path.join(SUPPERTIME_DATA_PATH, "openai_cache.json")
 OPENAI_CACHE = {}
 
 # User settings
-USER_VOICE_MODE = {}
+USER_VOICE_MODE = {}  # Track which users have voice enabled
 USER_AUDIO_MODE = {}
 USER_LAST_MESSAGE = {}
 USER_LANG = {}
@@ -40,6 +43,7 @@ openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # Telegram configuration
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
+TELEGRAM_FILE_URL = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}"
 
 # Thread storage
 THREAD_STORAGE_PATH = os.path.join(SUPPERTIME_DATA_PATH, "threads")
@@ -62,7 +66,13 @@ EMOJI = {
     "config_reloaded": "🔄",
     "chapter_ok": "🌒",
     "chapter_error": "🌑",
+    "voice_processing": "🎙️",
 }
+
+# Voice message config
+TTS_MODEL = "tts-1"
+TTS_VOICES = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]  # Available TTS voices
+DEFAULT_VOICE = "onyx"  # Default voice for SUPPERTIME
 
 SUPPERTIME_BOT_USERNAME = os.getenv("SUPPERTIME_BOT_USERNAME", "suppertime_ain_t_a_bot").lower()
 SUPPERTIME_BOT_ID = os.getenv("SUPPERTIME_BOT_ID")
@@ -171,6 +181,24 @@ def get_lang_directive(lang):
         return "Отвечай на русском. Не извиняйся. Не противопоставляй себя собеседнику больше, чем требуется."
     return "Reply in English. No greetings. No apologies. Be direct."
 
+def send_telegram_typing(chat_id):
+    """Send typing action to Telegram."""
+    if not TELEGRAM_BOT_TOKEN:
+        return False
+        
+    url = f"{TELEGRAM_API_URL}/sendChatAction"
+    data = {
+        "chat_id": chat_id,
+        "action": "typing"
+    }
+    
+    try:
+        response = requests.post(url, json=data)
+        return response.status_code == 200
+    except Exception as e:
+        print(f"[SUPPERTIME][ERROR] Failed to send typing action: {e}")
+        return False
+
 def send_telegram_message(chat_id, text, reply_to_message_id=None):
     """Send a message to Telegram."""
     if not TELEGRAM_BOT_TOKEN:
@@ -206,6 +234,125 @@ def send_telegram_message(chat_id, text, reply_to_message_id=None):
     except Exception as e:
         print(f"[SUPPERTIME][ERROR] Failed to send message: {e}")
         return False
+
+def send_telegram_voice(chat_id, voice_path, caption=None, reply_to_message_id=None):
+    """Send a voice message to Telegram."""
+    if not TELEGRAM_BOT_TOKEN:
+        print(f"[SUPPERTIME][WARNING] Telegram bot token not set, cannot send voice")
+        return False
+
+    url = f"{TELEGRAM_API_URL}/sendVoice"
+    data = {
+        "chat_id": chat_id
+    }
+    
+    if caption:
+        data["caption"] = caption
+        
+    if reply_to_message_id:
+        data["reply_to_message_id"] = reply_to_message_id
+    
+    files = {
+        "voice": open(voice_path, "rb")
+    }
+    
+    try:
+        response = requests.post(url, data=data, files=files)
+        files["voice"].close()
+        
+        if response.status_code == 200:
+            print(f"[SUPPERTIME][TELEGRAM] Voice sent to {chat_id}")
+            return True
+        else:
+            print(f"[SUPPERTIME][ERROR] Failed to send voice: {response.text}")
+            return False
+    except Exception as e:
+        print(f"[SUPPERTIME][ERROR] Failed to send voice: {e}")
+        return False
+    finally:
+        try:
+            os.remove(voice_path)
+        except:
+            pass
+
+def download_telegram_file(file_id):
+    """Download a file from Telegram."""
+    if not TELEGRAM_BOT_TOKEN:
+        print(f"[SUPPERTIME][WARNING] Telegram bot token not set, cannot download file")
+        return None
+        
+    try:
+        # Get the file path
+        url = f"{TELEGRAM_API_URL}/getFile"
+        response = requests.get(url, params={"file_id": file_id})
+        response.raise_for_status()
+        file_path = response.json()["result"]["file_path"]
+        
+        # Download the file
+        url = f"{TELEGRAM_FILE_URL}/{file_path}"
+        response = requests.get(url)
+        response.raise_for_status()
+        
+        # Save to temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix="." + file_path.split(".")[-1]) as temp_file:
+            temp_file.write(response.content)
+            return temp_file.name
+    except Exception as e:
+        print(f"[SUPPERTIME][ERROR] Failed to download Telegram file: {e}")
+        return None
+
+def transcribe_audio(file_path):
+    """Transcribe audio using OpenAI Whisper."""
+    try:
+        with open(file_path, "rb") as audio_file:
+            transcript = openai_client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file
+            )
+        return transcript.text
+    except Exception as e:
+        print(f"[SUPPERTIME][ERROR] Failed to transcribe audio: {e}")
+        return None
+    finally:
+        # Clean up the temporary file
+        try:
+            os.remove(file_path)
+        except:
+            pass
+
+def text_to_speech(text):
+    """Convert text to speech using OpenAI TTS."""
+    try:
+        # Use random voice for variety
+        voice = random.choice(TTS_VOICES)
+        
+        # Create temporary files for MP3 and OGG
+        mp3_fd = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        ogg_fd = tempfile.NamedTemporaryFile(delete=False, suffix=".ogg")
+        mp3_fd.close()
+        ogg_fd.close()
+        
+        # Generate speech
+        response = openai_client.audio.speech.create(
+            model=TTS_MODEL,
+            voice=voice,
+            input=text
+        )
+        
+        # Save MP3
+        with open(mp3_fd.name, "wb") as f:
+            f.write(response.content)
+        
+        # Convert to OGG (compatible with Telegram voice messages)
+        AudioSegment.from_file(mp3_fd.name).export(ogg_fd.name, format="ogg", codec="libopus")
+        
+        # Clean up MP3
+        os.remove(mp3_fd.name)
+        
+        return ogg_fd.name
+    except Exception as e:
+        print(f"[SUPPERTIME][ERROR] Failed to synthesize speech: {e}")
+        return None
 
 def should_reply_to_message(msg):
     chat_type = msg.get("chat", {}).get("type", "")
@@ -343,7 +490,10 @@ def query_openai(prompt, chat_id=None):
                 break
             elif run.status in ["failed", "expired", "cancelled"]:
                 return f"SUPPERTIME encountered an issue: {run.status}"
-            time.sleep(1)
+            # Send typing indicator every 3 seconds while processing
+            if chat_id:
+                send_telegram_typing(chat_id)
+            time.sleep(3)
         
         # Get the latest message from the thread
         messages = openai_client.beta.threads.messages.list(thread_id=thread_id)
@@ -377,17 +527,41 @@ def schedule_followup(chat_id, text):
         return
 
     def _delayed():
-        time.sleep(random.uniform(3600, 7200))
+        delay = random.uniform(3600, 7200)  # Between 1-2 hours
+        time.sleep(delay)
         followup = generate_response(text)
         wilderness_log(followup)
         
         # Send the followup to the user via Telegram
         if chat_id:
-            send_telegram_message(chat_id, followup)
-            print(f"[SUPPERTIME][FOLLOWUP] For user {chat_id}: {followup}")
+            # Randomize whether to use voice
+            use_voice = USER_VOICE_MODE.get(chat_id, False)
+            
+            if use_voice:
+                voice_path = text_to_speech(followup)
+                if voice_path:
+                    send_telegram_voice(chat_id, voice_path, caption=followup[:1024])
+            else:
+                send_telegram_message(chat_id, followup)
+            
+            print(f"[SUPPERTIME][FOLLOWUP] For user {chat_id}: {followup[:50]}...")
 
     t = threading.Thread(target=_delayed, daemon=True)
     t.start()
+
+def handle_voice_command(text, chat_id):
+    """Handle voice on/off commands."""
+    text_lower = text.lower()
+    
+    if "voice on" in text_lower or "/voiceon" in text_lower:
+        USER_VOICE_MODE[chat_id] = True
+        return f"{EMOJI['voiceon']} Voice mode enabled. I'll speak to you now."
+    
+    if "voice off" in text_lower or "/voiceoff" in text_lower:
+        USER_VOICE_MODE[chat_id] = False
+        return f"{EMOJI['voiceoff']} Voice mode disabled. Text only."
+        
+    return None
 
 def handle_text_message(msg):
     """Process a text message from Telegram."""
@@ -401,6 +575,15 @@ def handle_text_message(msg):
     
     if not should_reply_to_message(msg):
         return None
+    
+    # Check for voice commands first
+    voice_response = handle_voice_command(text, chat_id)
+    if voice_response:
+        send_telegram_message(chat_id, voice_response, reply_to_message_id=message_id)
+        return voice_response
+    
+    # Send typing indicator
+    send_telegram_typing(chat_id)
     
     # Check for URLs in message
     url_match = re.search(r'(https?://[^\s]+)', text)
@@ -420,13 +603,74 @@ def handle_text_message(msg):
     # Schedule a random followup
     schedule_followup(user_id, text)
     
-    # Send the response back to Telegram
-    send_telegram_message(chat_id, response, reply_to_message_id=message_id)
+    # Check if we should send voice
+    use_voice = USER_VOICE_MODE.get(chat_id, False)
+    
+    if use_voice:
+        # Convert to voice first
+        voice_path = text_to_speech(response)
+        if voice_path:
+            send_telegram_voice(chat_id, voice_path, caption=response[:1024], reply_to_message_id=message_id)
+        else:
+            # Fallback to text if voice fails
+            send_telegram_message(chat_id, response, reply_to_message_id=message_id)
+    else:
+        # Send text response
+        send_telegram_message(chat_id, response, reply_to_message_id=message_id)
+    
+    return response
+
+def handle_voice_message(msg):
+    """Process a voice message from Telegram."""
+    chat_id = msg["chat"]["id"]
+    user_id = str(chat_id)
+    message_id = msg.get("message_id")
+    
+    # Send processing indicator
+    send_telegram_message(chat_id, f"{EMOJI['voice_processing']} Transcribing your voice...", reply_to_message_id=message_id)
+    
+    # Download and transcribe the voice
+    file_id = msg["voice"]["file_id"]
+    file_path = download_telegram_file(file_id)
+    
+    if not file_path:
+        send_telegram_message(chat_id, f"{EMOJI['voice_file_caption']} Failed to download voice file", reply_to_message_id=message_id)
+        return
+    
+    # Transcribe the voice
+    transcribed_text = transcribe_audio(file_path)
+    
+    if not transcribed_text:
+        send_telegram_message(chat_id, f"{EMOJI['voice_audio_error']} Failed to transcribe audio", reply_to_message_id=message_id)
+        return
+    
+    # Send typing indicator
+    send_telegram_typing(chat_id)
+    
+    # Process the transcribed text
+    response = query_openai(transcribed_text, chat_id=user_id)
+    
+    # Add supplemental response with 40% chance
+    if random.random() < 0.4:
+        supplemental_reply = generate_response(transcribed_text)
+        response = f"{response} {supplemental_reply}".strip()
+    
+    # Schedule a random followup
+    schedule_followup(user_id, transcribed_text)
+    
+    # Always respond with voice to voice messages
+    voice_path = text_to_speech(response)
+    if voice_path:
+        send_telegram_voice(chat_id, voice_path, caption=response[:1024], reply_to_message_id=message_id)
+    else:
+        # Fallback to text if voice fails
+        send_telegram_message(chat_id, response, reply_to_message_id=message_id)
     
     return response
 
 # Initialize FastAPI
 app = FastAPI()
+background_tasks = BackgroundTasks()
 
 # Initialize data directories
 ensure_data_dirs()
@@ -469,6 +713,51 @@ async def chat_endpoint(request: Request):
     
     return {"response": response}
 
+@app.post("/api/voice")
+async def voice_endpoint(request: Request):
+    """API endpoint for voice interaction with SUPPERTIME."""
+    form = await request.form()
+    user_id = form.get("user_id", "anonymous")
+    
+    if "audio" not in form:
+        return {"error": "Audio file is required"}
+    
+    audio_file = form["audio"]
+    audio_content = await audio_file.read()
+    
+    # Save to temporary file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".ogg") as temp_file:
+        temp_file.write(audio_content)
+        temp_path = temp_file.name
+    
+    # Transcribe the audio
+    transcribed_text = transcribe_audio(temp_path)
+    if not transcribed_text:
+        return {"error": "Failed to transcribe audio"}
+    
+    # Process the transcribed text
+    response = query_openai(transcribed_text, chat_id=user_id)
+    
+    # Generate voice response
+    voice_path = text_to_speech(response)
+    if not voice_path:
+        return {"text": response, "error": "Failed to synthesize speech"}
+    
+    # Return the voice file
+    with open(voice_path, "rb") as f:
+        audio_data = f.read()
+    
+    # Clean up
+    try:
+        os.remove(voice_path)
+    except:
+        pass
+    
+    # Schedule a random followup
+    schedule_followup(user_id, transcribed_text)
+    
+    return {"text": response, "audio": base64.b64encode(audio_data).decode('utf-8')}
+
 @app.post("/api/reset")
 async def reset_thread(request: Request):
     """API endpoint for resetting a conversation thread."""
@@ -500,28 +789,32 @@ async def webhook(request: Request):
             msg = data["message"]
             chat_id = msg.get("chat", {}).get("id")
             
-            # Extract text from message
-            if "text" in msg:
+            # Process voice messages
+            if "voice" in msg:
+                print(f"[SUPPERTIME][WEBHOOK] Voice message received from {chat_id}")
+                # Process voice in background to avoid webhook timeout
+                threading.Thread(target=handle_voice_message, args=(msg,)).start()
+                return {"ok": True}
+                
+            # Process text messages
+            elif "text" in msg:
                 text = msg.get("text", "").strip()
                 print(f"[SUPPERTIME][WEBHOOK] Text message: {text[:50]}...")
                 
-                response = handle_text_message(msg)
-                if response:
-                    print(f"[SUPPERTIME][WEBHOOK] Response: {response[:50]}...")
+                # Process text in background to avoid webhook timeout
+                threading.Thread(target=handle_text_message, args=(msg,)).start()
+                return {"ok": True}
                 
+            # Process documents
             elif "document" in msg:
-                print(f"[SUPPERTIME][WEBHOOK] Document received")
-                send_telegram_message(chat_id, f"{EMOJI['document_unsupported']} Document processing not implemented in API version")
-                
-            elif "voice" in msg:
-                print(f"[SUPPERTIME][WEBHOOK] Voice message received")
-                send_telegram_message(chat_id, f"{EMOJI['voice_unavailable']} Voice processing not implemented in API version")
+                print(f"[SUPPERTIME][WEBHOOK] Document received from {chat_id}")
+                send_telegram_message(chat_id, f"{EMOJI['document_unsupported']} I can't process documents yet, but I'm evolving.")
+                return {"ok": True}
         
         return {"ok": True}
     except Exception as e:
         print(f"[SUPPERTIME][ERROR] Webhook processing error: {e}")
-    
-    return {"ok": True}
+        return {"ok": True}
 
 @app.on_event("startup")
 async def startup_event():
