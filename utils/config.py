@@ -5,6 +5,8 @@ import hashlib
 import threading
 import time
 
+from utils.whatdotheythinkiam import reflect_on_readme
+
 from utils.vector_store import vectorize_file, semantic_search_in_file
 
 SUPPERTIME_DATA_PATH = os.getenv("SUPPERTIME_DATA_PATH", "./data")
@@ -115,6 +117,24 @@ def schedule_lit_check(interval_hours=72):
         while True:
             vectorize_lit_files()
             time.sleep(interval_hours * 3600)
+
+    thread = threading.Thread(target=_loop, daemon=True)
+    thread.start()
+    return thread
+
+
+def schedule_identity_reflection(interval_days=7):
+    """Run README reflection on startup and weekly."""
+
+    def _loop():
+        # initial run
+        reflect_on_readme(force=True)
+        while True:
+            time.sleep(interval_days * 24 * 3600)
+            try:
+                reflect_on_readme()
+            except Exception as e:
+                print(f"[SUPPERTIME][ERROR] Identity reflection failed: {e}")
 
     thread = threading.Thread(target=_loop, daemon=True)
     thread.start()
