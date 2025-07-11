@@ -41,7 +41,7 @@ from utils.imagine import imagine
 from utils.file_handling import extract_text_from_file
 from utils.config import (
     vectorize_lit_files,
-    search_lit_files,
+    search_memory,
     explore_lit_directory,
     schedule_lit_check,
     schedule_identity_reflection,
@@ -810,8 +810,8 @@ def handle_text_message(msg):
                 # Send typing indicator
                 send_telegram_typing(chat_id)
                 
-                # Search in literary files
-                results = search_lit_files(query)
+                # Search in memory (vectorized files and logs)
+                results = search_memory(query)
                 
                 # Now ask SUPPERTIME to process these results
                 if results and not results.startswith("No "):
