@@ -40,7 +40,7 @@ from utils.text_helpers import extract_text_from_url
 from utils.imagine import imagine
 from utils.file_handling import extract_text_from_file
 from utils.vector_store import vectorize_file, semantic_search_in_file, chunk_text
-from resonator import schedule_resonance_creation, create_resonance_now
+from utils.resonator import schedule_resonance_creation, create_resonance_now
 
 # Constants and configuration
 SUPPERTIME_DATA_PATH = os.getenv("SUPPERTIME_DATA_PATH", "./data")
