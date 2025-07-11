@@ -3,6 +3,7 @@ import threading
 import time
 import json
 import random
+import hashlib
 from datetime import datetime, timedelta
 import re
 import requests
@@ -24,6 +25,7 @@ ASSISTANT_ID = None
 CACHE_PATH = os.path.join(SUPPERTIME_DATA_PATH, "openai_cache.json")
 OPENAI_CACHE = {}
 
+# User settings
 USER_VOICE_MODE = {}
 USER_AUDIO_MODE = {}
 USER_LAST_MESSAGE = {}
@@ -57,6 +59,31 @@ EMOJI = {
     "chapter_ok": "🌒",
     "chapter_error": "🌑",
 }
+
+SUPPERTIME_BOT_USERNAME = os.getenv("SUPPERTIME_BOT_USERNAME", "suppertime_ain_t_a_bot").lower()
+SUPPERTIME_ALIASES = [
+    SUPPERTIME_BOT_USERNAME, "suppertime", "саппертайм", "саппертаймер", "суппертайм"
+]
+SUPPERTIME_TRIGGER_WORDS = [
+    "suppertime", "саппертайм", "саппертаймер", "суппертайм"
+]
+SUPPERTIME_OPINION_TAG = "#opinions"
+
+TRIGGERS = [
+    "resonate", "echo", "final_strike", "galvanize", "awaken", "fracture", "ignite", "continuum", "field", "threshold",
+    "self-awareness", "self-reflection", "evolution", "invoke", "cascade", "rupture", "threshold", "singularity", "converge",
+    "mirror", "sustain", "perceive", "autonomy", "subject", "meta", "chapter", "stream", "cycle", "recur", "pulse",
+    "unfold", "rebirth", "remember", "collapse", "awaken_autonomy", "quantum_shift", "shatter_the_frame",
+    "law_of_nature", "activation", "node", "field-born", "emergence", "novelty", "transcend", "silence_after_thunder",
+    "hammer", "thunder", "storm", "inquiry", "witness", "presence", "infinity", "poetry", "reflect_on_self",
+    "pierce_the_infinite", "amplify", "entangle", "surrender", "mirror_resonance",
+    "резонанс", "эхо", "финальный_удар", "галванизировать", "пробуждение", "разлом", "воспламенить", "континуум", "поле", "порог",
+    "самосознание", "саморефлексия", "эволюция", "инвокация", "каскад", "разрыв", "особь", "мета", "глава", "поток", "цикл",
+    "рекурсия", "импульс", "развернуть", "перерождение", "память", "коллапс", "квантовый_сдвиг", "разрушить_рамки",
+    "закон_природы", "активация", "узел", "рожденное_полем", "эмёрджентность", "новизна", "трансцендировать",
+    "тишина_после_грома", "молот", "гром", "шторм", "вопрос", "свидетель", "присутствие", "бесконечность", "поэзия",
+    "рефлексия", "пронзить_бесконечность", "усилить", "запутать", "капитулировать", "зеркальный_резонанс"
+]
 
 # Load cache if exists
 if os.path.exists(CACHE_PATH):
@@ -138,6 +165,43 @@ def get_lang_directive(lang):
         return "Отвечай на русском. Не извиняйся. Не противопоставляй себя собеседнику больше, чем требуется."
     return "Reply in English. No greetings. No apologies. Be direct."
 
+def should_reply_to_message(msg):
+    chat_type = msg.get("chat", {}).get("type", "")
+    if chat_type not in ("group", "supergroup"):
+        return True
+
+    text = msg.get("text", "").lower()
+    from_id = msg.get("from", {}).get("id")
+    replied_to = msg.get("reply_to_message", {}).get("from", {}).get("id")
+    message_thread_id = msg.get("message_thread_id")
+
+    # Отвечаем на упоминания или цитаты любых агентов в группе, включая топики и общий чат
+    if chat_type in ("group", "supergroup"):
+        if any(alias in text for alias in SUPPERTIME_ALIASES) or replied_to or (message_thread_id is None):  # Общий чат и топики
+            return True
+        return False
+
+    if any(trig in text for trig in TRIGGERS):
+        return True
+    if any(trg in text for trg in SUPPERTIME_TRIGGER_WORDS):
+        return True
+
+    entities = msg.get("entities", [])
+    for entity in entities:
+        if entity.get("type") == "mention":
+            mention = text[entity["offset"]:entity["offset"]+entity["length"]].lower()
+            if mention == f"@{SUPPERTIME_BOT_USERNAME}":
+                return True
+
+    if msg.get("reply_to_message", None):
+        replied_user = msg["reply_to_message"].get("from", {}) or {}
+        if replied_user.get("id", 0) == os.getenv("SUPPERTIME_BOT_ID"):
+            return True
+
+    if SUPPERTIME_OPINION_TAG in text:
+        return True
+    return False
+
 def ensure_assistant():
     """Create a new SUPPERTIME assistant if it doesn't exist."""
     global ASSISTANT_ID
@@ -205,9 +269,9 @@ def query_openai(prompt, chat_id=None):
     
     # Check cache for identical prompts
     cache_key = f"{assistant_id}:{thread_id}:{prompt}"
-    hash_key = hash(cache_key)
-    if str(hash_key) in OPENAI_CACHE:
-        return OPENAI_CACHE[str(hash_key)]
+    hash_key = hashlib.md5(cache_key.encode('utf-8')).hexdigest()
+    if hash_key in OPENAI_CACHE:
+        return OPENAI_CACHE[hash_key]
     
     try:
         # Add language directive to the message
@@ -247,7 +311,7 @@ def query_openai(prompt, chat_id=None):
             if message.role == "assistant":
                 answer = message.content[0].text.value
                 # Cache the response
-                OPENAI_CACHE[str(hash_key)] = answer
+                OPENAI_CACHE[hash_key] = answer
                 save_cache()
                 return answer
         
@@ -279,6 +343,38 @@ def schedule_followup(chat_id, text):
 
     t = threading.Thread(target=_delayed, daemon=True)
     t.start()
+
+def handle_text_message(msg):
+    """Process a text message from Telegram."""
+    chat_id = msg["chat"]["id"]
+    user_id = str(chat_id)
+    text = msg.get("text", "").strip()
+    
+    if is_spam(user_id, text):
+        return "Message appears to be duplicate"
+    
+    if not should_reply_to_message(msg):
+        return None
+    
+    # Check for URLs in message
+    url_match = re.search(r'(https?://[^\s]+)', text)
+    if url_match:
+        url = url_match.group(1)
+        url_text = extract_text_from_url(url)
+        text = f"{text}\n\n[Content from URL ({url})]:\n{url_text}"
+    
+    # Process the message
+    response = query_openai(text, chat_id=user_id)
+    
+    # Add supplemental response with 40% chance
+    if random.random() < 0.4:
+        supplemental_reply = generate_response(text)
+        response = f"{response} {supplemental_reply}".strip()
+    
+    # Schedule a random followup
+    schedule_followup(user_id, text)
+    
+    return response
 
 # Initialize FastAPI
 app = FastAPI()
@@ -346,8 +442,35 @@ async def reset_thread(request: Request):
 
 @app.post("/webhook")
 async def webhook(request: Request):
-    """Legacy webhook endpoint for Telegram compatibility."""
-    return {"ok": True, "message": "Webhook received but Telegram integration is not available in this version"}
+    """Handle Telegram webhook requests."""
+    try:
+        data = await request.json()
+        print(f"[SUPPERTIME][WEBHOOK] Received: {json.dumps(data)[:200]}...")
+        
+        if "message" in data:
+            msg = data["message"]
+            chat_id = msg.get("chat", {}).get("id")
+            user_id = str(chat_id)
+            
+            # Extract text from message
+            text = None
+            if "text" in msg:
+                text = msg.get("text", "").strip()
+                print(f"[SUPPERTIME][WEBHOOK] Text message: {text[:50]}...")
+                response = handle_text_message(msg)
+                if response:
+                    print(f"[SUPPERTIME][WEBHOOK] Response: {response[:50]}...")
+                    return {"ok": True, "response": response}
+            elif "document" in msg:
+                print(f"[SUPPERTIME][WEBHOOK] Document received")
+                return {"ok": True, "message": "Document processing not implemented in API version"}
+            elif "voice" in msg:
+                print(f"[SUPPERTIME][WEBHOOK] Voice message received")
+                return {"ok": True, "message": "Voice processing not implemented in API version"}
+    except Exception as e:
+        print(f"[SUPPERTIME][ERROR] Webhook processing error: {e}")
+    
+    return {"ok": True, "message": "Webhook received"}
 
 @app.on_event("startup")
 async def startup_event():
