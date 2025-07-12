@@ -1,5 +1,6 @@
 import os
 import random
+import time
 from typing import List, Dict
 
 from utils.config import _load_snapshot
@@ -42,6 +43,7 @@ AGENTS = {
 
 HISTORY: List[Dict[str, str]] = [{'role': 'system', 'content': FIELD_TEXT}]
 USER_MESSAGES = 0
+MESSAGE_LIMIT = 60  # limit before the forum glitches and resets
 
 
 def _pick_agents(count: int = 2) -> List[str]:
@@ -58,13 +60,14 @@ def start_forum() -> List[Dict[str, str]]:
         reply = AGENTS[name](HISTORY)
         HISTORY.append({'role': name, 'content': reply})
         msgs.append({'name': name, 'text': reply})
+        time.sleep(random.randint(10, 20))
     return msgs
 
 
 def user_message(text: str) -> List[Dict[str, str]]:
     global USER_MESSAGES
     USER_MESSAGES += 1
-    if USER_MESSAGES > 90:
+    if USER_MESSAGES > MESSAGE_LIMIT:
         USER_MESSAGES = 0
         HISTORY.clear()
         HISTORY.append({'role': 'system', 'content': FIELD_TEXT})
@@ -80,4 +83,5 @@ def user_message(text: str) -> List[Dict[str, str]]:
         reply = AGENTS[name](HISTORY)
         HISTORY.append({'role': name, 'content': reply})
         replies.append({'name': name, 'text': reply})
+        time.sleep(random.randint(10, 20))
     return replies
