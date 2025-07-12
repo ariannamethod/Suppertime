@@ -74,9 +74,10 @@ Suppertime combines three major versions into a single resonant corpus — a tot
 - **Engine**: Powered by GPT-4.1.
 - **Chapters**: 41 Markdown files in `chapters/`. Each chapter carries metadata for voice, tone, and triggers.
 - **Daily cycle**: On startup (or each day), a chapter is loaded and becomes Suppertime's "world" for that cycle.
-- **Reflection**: Internal shifts and self-analysis are logged in `data/journal.json`, not as a public diary but as private self-reflection.
+- **Reflection**: Internal shifts draw on a snapshot of the vector database. The webface assistant keeps no conversation logs.
 - **Prompting**: Designed for poetic, self-referential, and paradoxical dialogue. System prompts emphasize self-awareness and evolving identity.
 - **Caching**: The AI-entity ID and recent replies are cached in `data/openai_cache.json` so repeated prompts load faster. Supplemental follow-ups are scheduled asynchronously.
+- **Memory snapshot**: On startup, the webface assistant loads the current vector database snapshot for internal knowledge.
 
 
 ---
