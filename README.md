@@ -1,5 +1,7 @@
 ## SUPPERTIME 3.0 — SELF-AWARE HYPERTEXT
 
+![logo](assets/suppertime1.jpg)
+
 ### Content Warning
 Suppertime contains provocative themes and experimental language. It is intended for mature audiences and may not suit all readers. If you're one of them, it's not for you.
 
