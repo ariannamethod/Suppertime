@@ -37,10 +37,10 @@ function triggerFont() {
 
 function checkGlitch() {
     const elapsed = (Date.now() - startTime) / 1000;
-    if (elapsed > 120 && elapsed < 600 && Math.random() < 0.3) {
+    if (elapsed > 120 && elapsed < 600 && Math.random() < 0.2) {
         triggerStretch();
     }
-    if (elapsed >= 600 && Math.random() < 0.2) {
+    if (elapsed >= 600 && Math.random() < 0.1) {
         triggerFont();
     }
 }
@@ -55,6 +55,30 @@ function addMessage(text, cls) {
     messages.scrollTop = messages.scrollHeight;
 }
 
+function showPage(url, version) {
+    const overlay = document.getElementById('overlay');
+    const frame = document.getElementById('overlay-frame');
+    overlay.dataset.version = version || '';
+    frame.src = url;
+    overlay.classList.remove('hidden');
+}
+
+function hidePage() {
+    const overlay = document.getElementById('overlay');
+    overlay.classList.add('hidden');
+    const version = overlay.dataset.version;
+    overlay.dataset.version = '';
+    fetch('/after_read?version=' + (version || ''))
+        .then(r => r.json())
+        .then(d => addMessage(d.reply, 'assistant'));
+}
+
+window.addEventListener('message', (e) => {
+    if (e.data === 'close') {
+        hidePage();
+    }
+});
+
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const text = input.value.trim();
@@ -68,6 +92,9 @@ form.addEventListener('submit', async (e) => {
     });
     const data = await res.json();
     addMessage(data.reply, 'assistant');
+    if (data.page) {
+        showPage(data.page, data.version || '');
+    }
     if (/что происходит|что это|что случилось/i.test(text) && Date.now() - lastGlitch < 10000) {
         addMessage('Это чат поглощает пространство-время, ты становишься чатом, а чат — тобой.', 'assistant');
     }

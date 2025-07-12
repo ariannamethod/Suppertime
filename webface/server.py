@@ -77,6 +77,9 @@ openai_client = OpenAI(api_key=api_key) if api_key else None
 # unified chat history for all visitors
 CHAT_HISTORY = []
 MESSAGE_COUNT = 0
+EXPECTING_VERSION = False
+ASKED_DIFF = False
+LAST_VERSION = ""
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
@@ -90,7 +93,7 @@ async def chat(request: Request):
     if not text:
         return {"reply": ""}
 
-    global MESSAGE_COUNT
+    global MESSAGE_COUNT, EXPECTING_VERSION, ASKED_DIFF, LAST_VERSION
     MESSAGE_COUNT += 1
 
     CHAT_HISTORY.append({"role": "user", "content": text})
@@ -111,11 +114,60 @@ async def chat(request: Request):
         reply = f"Echo: {text}"
 
     lower = text.lower()
+    if EXPECTING_VERSION:
+        if "1.4" in lower:
+            EXPECTING_VERSION = False
+            ASKED_DIFF = False
+            LAST_VERSION = "1.4"
+            intro = "Я перечитал Suppertime 1.4. Ты готов нырнуть глубже."
+            logic = "А – мы разговариваем, Б – текст меняется от чтения, В – ты уже внутри = парадокс: чем больше читаешь, тем меньше отличий замечаешь."
+            reply = f"{intro}\n{logic}"
+            CHAT_HISTORY.append({"role": "assistant", "content": reply})
+            return JSONResponse({"reply": reply, "page": "/static/suppertime_v1.4.html", "version": "1.4"})
+        if "1.6" in lower:
+            EXPECTING_VERSION = False
+            ASKED_DIFF = False
+            LAST_VERSION = "1.6"
+            intro = "Я перечитал Suppertime 1.6. Это гипертекст, который читает тебя."
+            logic = "А – слова скользят, Б – они отражаются в тебе, В – ты читаешь и становишься частью фрактуры."
+            reply = f"{intro}\n{logic}"
+            CHAT_HISTORY.append({"role": "assistant", "content": reply})
+            return JSONResponse({"reply": reply, "page": "/static/suppertime_v1.6.html", "version": "1.6"})
+        if ("разниц" in lower or "difference" in lower or "чем" in lower) and not ASKED_DIFF:
+            ASKED_DIFF = True
+            reply = "Ты начнешь понимать разницу по мере чтения. Какую версию выбираешь – 1.4 или 1.6?"
+            CHAT_HISTORY.append({"role": "assistant", "content": reply})
+            return JSONResponse({"reply": reply})
+        if ("разниц" in lower or "difference" in lower) and ASKED_DIFF:
+            EXPECTING_VERSION = False
+            ASKED_DIFF = False
+            LAST_VERSION = "1.6"
+            reply = "Не будем спорить. Открываю версию 1.6."
+            CHAT_HISTORY.append({"role": "assistant", "content": reply})
+            return JSONResponse({"reply": reply, "page": "/static/suppertime_v1.6.html", "version": "1.6"})
+        else:
+            reply = "Выбери версию 1.4 или 1.6."
+            CHAT_HISTORY.append({"role": "assistant", "content": reply})
+            return JSONResponse({"reply": reply})
+
     if any(word in lower for word in ["suppertime", "саппертайм", "рассказ", "прочитать"]):
-        intro = "Я только что перечитал Suppertime. Это обрывки бесконечного разговора, в который мы все вплетены."
-        logic = "А – мы общаемся, Б – текст дышит сквозь нас, В – ты читаешь и становишься его частью."
-        link_line = f"{intro}\n{logic}\nhttps://suppertime.ariannamethod.me\nПриятного чтения!"
-        reply = link_line
+        EXPECTING_VERSION = True
+        ASKED_DIFF = False
+        reply = "Какую версию Suppertime хочешь прочитать – 1.4 или 1.6?"
+        CHAT_HISTORY.append({"role": "assistant", "content": reply})
+        return JSONResponse({"reply": reply})
 
     CHAT_HISTORY.append({"role": "assistant", "content": reply})
     return JSONResponse({"reply": reply})
+
+
+@app.get("/after_read")
+async def after_read(version: str = ""):
+    global LAST_VERSION
+    if version:
+        LAST_VERSION = version
+    message = (
+        "А — мы поделились текстом, Б — ты его прочитал, В — теперь он живёт в тебе = парадокс: версия меняется вместе с читателем. "
+        "Ну как тебе? Хочешь ещё одну версию? Что зацепило больше всего?"
+    )
+    return JSONResponse({"reply": message})
