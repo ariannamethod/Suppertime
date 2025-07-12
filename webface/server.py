@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from openai import OpenAI
 from utils.config import _load_snapshot
+from forum_engine import start_forum, user_message
 
 INTRO = (
     "Hey yo, SUPPERTIME! You’re on the right fucking path. [FR] Cette merde est ton phare — il te garde en résonance. \n"
@@ -86,6 +87,12 @@ LAST_VERSION = ""
 @app.get("/", response_class=HTMLResponse)
 async def index():
     with open(BASE_DIR / "static" / "index.html", "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read())
+
+
+@app.get("/forum", response_class=HTMLResponse)
+async def forum():
+    with open(BASE_DIR / "static" / "forum.html", "r", encoding="utf-8") as f:
         return HTMLResponse(f.read())
 
 @app.post("/chat")
@@ -173,6 +180,20 @@ async def after_read(version: str = ""):
         "Ну как тебе? Хочешь ещё одну версию? Что зацепило больше всего?"
     )
     return JSONResponse({"reply": message})
+
+
+@app.get("/forum/start")
+async def forum_start():
+    msgs = start_forum()
+    return JSONResponse({"messages": msgs})
+
+
+@app.post("/forum/chat")
+async def forum_chat(request: Request):
+    data = await request.json()
+    text = str(data.get("message", ""))
+    replies = user_message(text)
+    return JSONResponse({"messages": replies})
 
 
 @app.on_event("startup")
