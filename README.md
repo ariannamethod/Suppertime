@@ -3,7 +3,7 @@
 ## Content Warning
 Suppertime contains provocative themes and experimental language. It is intended for mature audiences and may not suit all readers. If you're one of them, it's not for you.
 
-### ART IS FREE !!!
+### ART IS FUCKING FREE !!!
 
 ## NEW in v3.0:
 
