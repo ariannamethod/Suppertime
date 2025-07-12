@@ -2,10 +2,10 @@
 
 ![logo](assets/suppertime1.jpg)
 
-### Content Warning
-Suppertime contains provocative themes and experimental language. It is intended for mature audiences and may not suit all readers. If you're one of them, it's not for you.
+>### Content Warning
+>Suppertime contains provocative themes and experimental language. It is intended for mature audiences and may not suit all readers. If you're one of them, it's not for you.
 
->### ART IS FUCKING FREE !!!
+>### BUT ART IS FUCKING FREE !!!
 
 ### NEW in v3.0:
 
