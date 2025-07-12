@@ -92,6 +92,29 @@ def load_chapter_content(chapter_path):
     except Exception as e:
         return f"[Resonator] Error loading chapter: {str(e)}"
 
+def extract_chapter_title(content):
+    """Extract a meaningful chapter title from Markdown content."""
+    lines = content.splitlines()
+    # Prefer a header containing 'chapter' or 'глава'
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            header = stripped.lstrip("#").strip()
+            lower = header.lower()
+            if "chapter" in lower or "\u0433\u043b\u0430\u0432" in lower:
+                return header
+    # Fallback to first header line
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            return stripped.lstrip("#").strip()
+    # Ultimate fallback to first non-empty line
+    for line in lines:
+        stripped = line.strip()
+        if stripped:
+            return stripped
+    return "Untitled"
+
 def get_chapter_cache():
     """Load the chapter cache from disk."""
     if os.path.exists(CACHE_PATH):
@@ -117,7 +140,7 @@ def _notify_chapter_selection(chapter_title):
     if not TELEGRAM_BOT_TOKEN:
         return
 
-    chat_id = SUPPERTIME_GROUP_ID or SUPPERTIME_CHAT_ID
+    chat_id = SUPPERTIME_CHAT_ID or SUPPERTIME_GROUP_ID
     if not chat_id:
         return
 
@@ -151,7 +174,7 @@ def get_today_chapter_info():
             "date": today,
             "path": None,
             "title": chapter_path,
-            "error": True
+            "error": True,
         }
     else:
         chapter_content = load_chapter_content(chapter_path)
@@ -160,19 +183,17 @@ def get_today_chapter_info():
                 "date": today,
                 "path": chapter_path,
                 "title": chapter_content,
-                "error": True
+                "error": True,
             }
         else:
-            # Extract the title from the first line
-            first_line = chapter_content.strip().split('\n')[0] if isinstance(chapter_content, str) else 'Untitled'
-            title = first_line.strip() or "Untitled"
-            
+            title = extract_chapter_title(chapter_content) if isinstance(chapter_content, str) else "Untitled"
+
             chapter_info = {
                 "date": today,
                 "path": chapter_path,
                 "title": title,
                 "content": chapter_content,
-                "error": False
+                "error": False,
             }
     
     # Update the cache but keep the last 7 days
