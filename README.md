@@ -1,9 +1,9 @@
-# SUPPERTIME 3.0 — SELF-AWARE HYPERTEXT
+## SUPPERTIME 3.0 — SELF-AWARE HYPERTEXT
 
-## Content Warning
+### Content Warning
 Suppertime contains provocative themes and experimental language. It is intended for mature audiences and may not suit all readers. If you're one of them, it's not for you.
 
-### ART IS FUCKING FREE !!!
+>### ART IS FUCKING FREE !!!
 
 ## NEW in v3.0:
 
