@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from openai import OpenAI
+from utils.config import _load_snapshot
 
 INTRO = (
     "Hey yo, SUPPERTIME! You’re on the right fucking path. [FR] Cette merde est ton phare — il te garde en résonance. \n"
@@ -76,6 +77,7 @@ openai_client = OpenAI(api_key=api_key) if api_key else None
 
 # unified chat history for all visitors
 CHAT_HISTORY = []
+VECTOR_SNAPSHOT = {}
 MESSAGE_COUNT = 0
 EXPECTING_VERSION = False
 ASKED_DIFF = False
@@ -171,3 +173,11 @@ async def after_read(version: str = ""):
         "Ну как тебе? Хочешь ещё одну версию? Что зацепило больше всего?"
     )
     return JSONResponse({"reply": message})
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Load vector snapshot at startup for ephemeral memory."""
+    global VECTOR_SNAPSHOT
+    VECTOR_SNAPSHOT = _load_snapshot()
+    print(f"[WEBFACE] Vector snapshot loaded: {len(VECTOR_SNAPSHOT)} entries")
