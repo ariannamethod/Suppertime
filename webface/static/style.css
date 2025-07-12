@@ -69,3 +69,25 @@ button {
 .glitch-font {
     animation: fontWobble 4s ease-in-out;
 }
+
+#overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #fff;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 20px;
+    z-index: 1000;
+}
+#overlay.hidden {
+    display: none;
+}
+#overlay-frame {
+    width: 90%;
+    height: 90%;
+    border: none;
+}
