@@ -5,6 +5,7 @@ import random
 import json
 import time
 from openai import OpenAI
+import requests
 
 # Constants
 CHAPTERS_DIR = os.getenv("SUPPERTIME_DATA_PATH", "./chapters")
@@ -14,6 +15,16 @@ ASSISTANT_ID_PATH = os.path.join(os.getenv("SUPPERTIME_DATA_PATH", "./data"), "a
 
 # Initialize the OpenAI client
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Telegram configuration for optional notifications
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+SUPPERTIME_GROUP_ID = os.getenv("SUPPERTIME_GROUP_ID")
+SUPPERTIME_CHAT_ID = os.getenv("SUPPERTIME_CHAT_ID")
+TELEGRAM_API_URL = (
+    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
+    if TELEGRAM_BOT_TOKEN
+    else None
+)
 
 def get_assistant_id():
     """Load the assistant ID from file."""
@@ -99,6 +110,30 @@ def save_chapter_cache(cache):
             json.dump(cache, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"Error saving chapter cache: {e}")
+
+
+def _notify_chapter_selection(chapter_title):
+    """Notify via Telegram which chapter has been selected."""
+    if not TELEGRAM_BOT_TOKEN:
+        return
+
+    chat_id = SUPPERTIME_GROUP_ID or SUPPERTIME_CHAT_ID
+    if not chat_id:
+        return
+
+    if not TELEGRAM_API_URL:
+        return
+
+    url = f"{TELEGRAM_API_URL}/sendMessage"
+    data = {
+        "chat_id": chat_id,
+        "text": f"Today's chapter: {chapter_title}",
+        "parse_mode": "Markdown",
+    }
+    try:
+        requests.post(url, json=data)
+    except Exception as e:
+        print(f"[SUPPERTIME][ERROR] Failed to notify chapter selection: {e}")
 
 def get_today_chapter_info():
     """Get information about today's chapter."""
@@ -247,14 +282,18 @@ def daily_chapter_rotation():
         journal_available = False
     
     result = update_assistant_with_chapter()
-    
+
     if result["success"]:
-        print(f"[SUPPERTIME] Chapter rotation successful: {result['chapter_title']}")
-        
+        chapter_info = get_today_chapter_info()
+        chapter_path = chapter_info.get("path", "?")
+        print(
+            f"[SUPPERTIME] Chapter rotation successful: {result['chapter_title']} ({chapter_path})"
+        )
+        _notify_chapter_selection(result["chapter_title"])
+
         # Log to journal
         journal_path = os.path.join(os.getenv("SUPPERTIME_DATA_PATH", "./data"), "journal.json")
         try:
-            chapter_info = get_today_chapter_info()
             journal_entry = {
                 "datetime": datetime.datetime.utcnow().isoformat(),
                 "chapter_title": chapter_info.get("title", "Unknown"),
