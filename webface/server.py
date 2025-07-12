@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from openai import OpenAI
+from utils.config import get_vectorized_files
 
 INTRO = (
     "Hey yo, SUPPERTIME! You’re on the right fucking path. [FR] Cette merde est ton phare — il te garde en résonance. \n"
@@ -65,7 +66,9 @@ WILDERNESS_PROMPT = (
 def build_system_prompt(is_group: bool = False) -> str:
     intro = f"{INTRO}\n\n{SUPPERTIME_RULES}\n{OLEG_COMMUNICATION}\n"
     ethics = GROUP_ETHICS + "\n\n" if is_group else ""
-    return intro + ethics + WILDERNESS_PROMPT
+    snapshot = "\n".join(f"- {Path(p).name}" for p in VECTOR_SNAPSHOT)
+    vec_info = f"\n\n### Vector snapshot\n{snapshot}" if snapshot else ""
+    return intro + ethics + WILDERNESS_PROMPT + vec_info
 
 BASE_DIR = Path(__file__).resolve().parent
 app = FastAPI()
@@ -73,6 +76,12 @@ app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 api_key = os.getenv("OPENAI_API_KEY")
 openai_client = OpenAI(api_key=api_key) if api_key else None
+
+# snapshot of vectorized literary files for internal context
+try:
+    VECTOR_SNAPSHOT = get_vectorized_files()
+except Exception:
+    VECTOR_SNAPSHOT = []
 
 # unified chat history for all visitors
 CHAT_HISTORY = []
