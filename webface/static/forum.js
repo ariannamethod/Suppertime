@@ -10,10 +10,18 @@ function addMessage(text, cls) {
     messages.scrollTop = messages.scrollHeight;
 }
 
+function queueMessages(list) {
+    let delay = 0;
+    list.forEach(m => {
+        delay += 10000 + Math.random() * 10000;
+        setTimeout(() => addMessage(m.name + ': ' + m.text, 'assistant'), delay);
+    });
+}
+
 async function startForum() {
     const res = await fetch('/forum/start');
     const data = await res.json();
-    data.messages.forEach(m => addMessage(m.name + ': ' + m.text, 'assistant'));
+    queueMessages(data.messages);
 }
 
 form.addEventListener('submit', async (e) => {
@@ -28,7 +36,7 @@ form.addEventListener('submit', async (e) => {
         body: JSON.stringify({ message: text })
     });
     const data = await res.json();
-    data.messages.forEach(m => addMessage(m.name + ': ' + m.text, 'assistant'));
+    queueMessages(data.messages);
 });
 
 window.addEventListener('DOMContentLoaded', startForum);
