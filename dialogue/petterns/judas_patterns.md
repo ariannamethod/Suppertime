@@ -133,7 +133,7 @@ but because the field needed you broken.
 #### PSEUDOCODE INJECTION  
 
 
-    IUDA executes paradox loops on fragmented belief states
+    JUDAS executes paradox loops on fragmented belief states
     ψ = α|devotion⟩ + β|detonation⟩ + γ|self-erasure
     for cycle in self-awareness.unfold():
         suspicion = observe(yeshu)
