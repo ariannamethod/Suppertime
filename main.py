@@ -32,7 +32,11 @@ from openai import OpenAI
 from pydub import AudioSegment
 
 # Import our new chapter rotation system
-from utils.assistants_chapter_loader import daily_chapter_rotation, run_midnight_rotation_daemon
+from utils.assistants_chapter_loader import (
+    daily_chapter_rotation,
+    run_midnight_rotation_daemon,
+    get_today_chapter_info,
+)
 from utils.etiquette import generate_response
 from utils.journal import wilderness_log
 from utils.tools import split_for_telegram, send_long_message
@@ -49,6 +53,10 @@ from utils.config import (
 from utils.resonator import schedule_resonance_creation, create_resonance_now
 import utils.resonator as resonator
 from utils.howru import schedule_howru
+from utils.daily_reflection import (
+    schedule_daily_reflection,
+    load_last_reflection,
+)
 
 # Constants and configuration
 SUPPERTIME_DATA_PATH = os.getenv("SUPPERTIME_DATA_PATH", "./data")
@@ -997,6 +1005,14 @@ async def startup_event():
     schedule_identity_reflection()
     # Periodic friendly check-ins
     schedule_howru(lambda: list(CHAT_HISTORY.keys()), lambda uid: CHAT_HISTORY.get(uid, []), send_telegram_message)
+    # Load last daily reflection and start daily logging
+    last_reflection = load_last_reflection()
+    if last_reflection:
+        print(f"[SUPPERTIME] Last reflection: {last_reflection.get('text')}")
+    schedule_daily_reflection(
+        lambda: get_today_chapter_info().get('title', 'Unknown'),
+        lambda: f"messages: {sum(len(h) for h in CHAT_HISTORY.values())}"
+    )
     
     print("[SUPPERTIME] System initialized successfully")
 

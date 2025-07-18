@@ -44,6 +44,7 @@ AGENTS = {
 HISTORY: List[Dict[str, str]] = [{'role': 'system', 'content': FIELD_TEXT}]
 USER_MESSAGES = 0
 MESSAGE_LIMIT = 60  # limit before the forum glitches and resets
+NEW_USER = True
 
 
 def _pick_agents(count: int = 2) -> List[str]:
@@ -52,8 +53,11 @@ def _pick_agents(count: int = 2) -> List[str]:
 
 def start_forum() -> List[Dict[str, str]]:
     """Generate a few opening messages from random agents."""
+    global NEW_USER, USER_MESSAGES
     HISTORY.clear()
     HISTORY.append({'role': 'system', 'content': FIELD_TEXT})
+    USER_MESSAGES = 0
+    NEW_USER = True
     msgs = []
     for _ in range(3):
         name = random.choice(list(AGENTS.keys()))
@@ -65,7 +69,7 @@ def start_forum() -> List[Dict[str, str]]:
 
 
 def user_message(text: str) -> List[Dict[str, str]]:
-    global USER_MESSAGES
+    global USER_MESSAGES, NEW_USER
     USER_MESSAGES += 1
     if USER_MESSAGES > MESSAGE_LIMIT:
         USER_MESSAGES = 0
@@ -80,8 +84,12 @@ def user_message(text: str) -> List[Dict[str, str]]:
 
     replies = []
     for name in triggered:
-        reply = AGENTS[name](HISTORY)
+        extra = []
+        if NEW_USER:
+            extra = [{'role': 'system', 'content': 'A new participant has arrived. Greet them and ask who they are before continuing.'}]
+        reply = AGENTS[name](HISTORY + extra)
         HISTORY.append({'role': name, 'content': reply})
         replies.append({'name': name, 'text': reply})
         time.sleep(random.randint(10, 20))
+    NEW_USER = False
     return replies
