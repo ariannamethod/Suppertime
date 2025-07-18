@@ -3,6 +3,7 @@ import hashlib
 from pinecone import Pinecone, ServerlessSpec
 import openai
 from tenacity import retry, stop_after_attempt, wait_fixed
+import datetime
 
 EMBED_DIM = 1536
 
@@ -91,3 +92,21 @@ def semantic_search_in_file(fname, query, openai_api_key, top_k=5):
         if chunk_text_:
             chunks.append(chunk_text_)
     return chunks
+
+
+def add_memory_entry(text, openai_api_key, metadata=None):
+    """Vectorize arbitrary text as a memory entry."""
+    if metadata is None:
+        metadata = {}
+    ts = datetime.datetime.utcnow().isoformat()
+    entry_id = metadata.get("id", f"memory-{ts}")
+    emb = safe_embed(text, openai_api_key)
+    index.upsert([(entry_id, emb, {**metadata, "ts": ts})])
+    return entry_id
+
+
+def fetch_entries(ids):
+    """Fetch entries by ID from Pinecone."""
+    if not ids:
+        return {}
+    return index.fetch(ids)
