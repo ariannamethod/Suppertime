@@ -368,7 +368,7 @@ def send_telegram_photo(chat_id, photo_url, caption=None, reply_to_message_id=No
         return False
 
 def send_voice_keyboard(chat_id):
-    """Send inline buttons for toggling voice mode."""
+    """Send reply keyboard with voice mode commands."""
     if not TELEGRAM_BOT_TOKEN:
         print(f"[SUPPERTIME][WARNING] Telegram bot token not set, cannot send keyboard")
         return False
@@ -378,12 +378,14 @@ def send_voice_keyboard(chat_id):
         "chat_id": chat_id,
         "text": "Voice mode options:",
         "reply_markup": {
-            "inline_keyboard": [
+            "keyboard": [
                 [
-                    {"text": f"{EMOJI['voiceon']} Voice On", "callback_data": "voiceon"},
-                    {"text": f"{EMOJI['voiceoff']} Voice Off", "callback_data": "voiceoff"}
+                    {"text": "/voiceon"},
+                    {"text": "/voiceoff"}
                 ]
-            ]
+            ],
+            "resize_keyboard": True,
+            "one_time_keyboard": True
         }
     }
 
@@ -397,6 +399,32 @@ def send_voice_keyboard(chat_id):
             return False
     except Exception as e:
         print(f"[SUPPERTIME][ERROR] Failed to send keyboard: {e}")
+        return False
+
+def set_bot_commands():
+    """Register basic bot commands with Telegram."""
+    if not TELEGRAM_BOT_TOKEN:
+        print(f"[SUPPERTIME][WARNING] Telegram bot token not set, cannot set commands")
+        return False
+
+    url = f"{TELEGRAM_API_URL}/setMyCommands"
+    data = {
+        "commands": [
+            {"command": "voiceon", "description": "Enable voice mode"},
+            {"command": "voiceoff", "description": "Disable voice mode"}
+        ]
+    }
+
+    try:
+        response = requests.post(url, json=data)
+        if response.status_code == 200:
+            print("[SUPPERTIME][TELEGRAM] Commands set")
+            return True
+        else:
+            print(f"[SUPPERTIME][ERROR] Failed to set commands: {response.text}")
+            return False
+    except Exception as e:
+        print(f"[SUPPERTIME][ERROR] Failed to set commands: {e}")
         return False
 
 def download_telegram_file(file_id):
@@ -1030,6 +1058,7 @@ async def startup_event():
     """Initialize the SUPPERTIME system."""
     # Ensure we have an assistant
     ensure_assistant()
+    set_bot_commands()
     
     # Ensure data directories exist
     ensure_data_dirs()
