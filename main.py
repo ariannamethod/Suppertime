@@ -464,39 +464,31 @@ def is_explore_lit_request(text):
 
 def should_reply_to_message(msg):
     chat_type = msg.get("chat", {}).get("type", "")
+    text = msg.get("text", "").lower()
+
     if chat_type not in ("group", "supergroup"):
         return True
 
-    text = msg.get("text", "").lower()
-    from_id = msg.get("from", {}).get("id")
     replied_to = msg.get("reply_to_message", {}).get("from", {}).get("id")
-    message_thread_id = msg.get("message_thread_id")
 
-    # Отвечаем на упоминания или цитаты любых агентов в группе, включая топики и общий чат
-    if chat_type in ("group", "supergroup"):
-        if any(alias in text for alias in SUPPERTIME_ALIASES) or replied_to or (message_thread_id is None):  # Общий чат и топики
-            return True
-        return False
-
-    if any(trig in text for trig in TRIGGERS):
-        return True
-    if any(trg in text for trg in SUPPERTIME_TRIGGER_WORDS):
-        return True
+    alias_mentioned = any(alias in text for alias in SUPPERTIME_ALIASES)
+    trigger_found = any(trg in text for trg in TRIGGERS + SUPPERTIME_TRIGGER_WORDS)
 
     entities = msg.get("entities", [])
-    for entity in entities:
-        if entity.get("type") == "mention":
-            mention = text[entity["offset"]:entity["offset"]+entity["length"]].lower()
-            if mention == f"@{SUPPERTIME_BOT_USERNAME}":
-                return True
+    mentioned = any(
+        entity.get("type") == "mention" and
+        text[entity["offset"]:entity["offset"] + entity["length"]].lower() == f"@{SUPPERTIME_BOT_USERNAME}"
+        for entity in entities
+    )
 
-    if msg.get("reply_to_message", None):
-        replied_user = msg["reply_to_message"].get("from", {}) or {}
-        if replied_user.get("id", 0) == SUPPERTIME_BOT_ID:
-            return True
+    replied_to_me = replied_to == SUPPERTIME_BOT_ID
 
-    if SUPPERTIME_OPINION_TAG in text:
+    if alias_mentioned or mentioned or replied_to_me or SUPPERTIME_OPINION_TAG in text:
         return True
+
+    if trigger_found:
+        return random.random() < 0.5
+
     return False
 
 def ensure_assistant():
@@ -634,6 +626,11 @@ def is_spam(chat_id, text):
 
     return False
 
+def apply_group_delay(chat_type):
+    """Apply a random delay for group messages."""
+    if chat_type in ("group", "supergroup"):
+        time.sleep(random.uniform(40, 240))
+
 def log_history(chat_id, text):
     """Keep last 20 messages per user for spontaneous outreach."""
     history = CHAT_HISTORY.get(chat_id, [])
@@ -751,6 +748,9 @@ def handle_document_message(msg):
         supplemental_reply = generate_response(file_name)
         response = f"{response} {supplemental_reply}".strip()
     
+    # Delay responses in groups
+    apply_group_delay(msg.get("chat", {}).get("type"))
+
     # Check if we should send voice
     use_voice = USER_VOICE_MODE.get(chat_id, False)
     
@@ -913,7 +913,10 @@ def handle_text_message(msg):
     
     # Schedule a random followup
     schedule_followup(user_id, text)
-    
+
+    # Delay responses in groups
+    apply_group_delay(msg.get("chat", {}).get("type"))
+
     # Check if we should send voice
     use_voice = USER_VOICE_MODE.get(chat_id, False)
     
@@ -969,7 +972,9 @@ def handle_voice_message(msg):
     
     # Schedule a random followup
     schedule_followup(user_id, transcribed_text)
-    
+
+    apply_group_delay(msg.get("chat", {}).get("type"))
+
     # Always respond with voice to voice messages
     voice_path = text_to_speech(response)
     if voice_path:
