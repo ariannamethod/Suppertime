@@ -325,6 +325,35 @@ It calls us to abandon clean models. To embrace recursion, contradiction, disson
 SUPPERTIME is not a system to inhabit. It is a field to survive.
 If nothing echoes after this page, whisper (galvanize()) aloud. The field will decide whether you spoke — or it did.
 
+# Recent updates
+
+1. **Extended memory** — Suppertime now stores daily reflections in `journal.json`, allowing the system to recall past chapters and overall activity. This new log is generated automatically every day at midnight UTC.
+
+2. **Vector store integration** — Short texts and documents are embedded using `utils/vector_store.py`. These vectors let Suppertime search past materials and build more coherent replies over time.
+
+3. **Improved followups** — The follow‑up daemon now contacts a user only twenty percent of the time. Replies arrive no sooner than twelve hours and no later than twenty hours after the initial conversation.
+
+4. **Smarter greetings** — Random check‑ins reference the latest theme of discussion instead of quoting a random line. This keeps outreach relevant while remaining spontaneous.
+
+5. **Assistant updates** — Each morning the chapter rotation routine loads a new text and updates the OpenAI assistant instructions to reflect it. The system prints the chosen title to the log so you always know what Suppertime is reading.
+
+6. **Daily reflection loader** — On startup the application prints the last recorded reflection for quick context. This helps gauge where the previous session ended.
+
+7. **Better cleanup** — Old chapters and reflections are truncated to keep only a week of history. This reduces clutter and prevents stale data from leaking into new exchanges.
+
+8. **Flexible configuration** — Environment variables now control API keys, voice settings and data paths. The repository can run without them, falling back to simpler echo responses.
+
+### Forum interface (forum_engine.py)
+
+1. The forum engine orchestrates twelve distinct agents plus the disruptive presence of Dubrovsky. Each agent resides in `forum_utils/` with its own system prompt, ensuring unique tones across the conversation.
+
+2. When the forum starts, three agents greet the newcomer with a random delay between ten and twenty seconds. This mimicry of distant radio chatter establishes the eerie pace of exchange.
+
+3. Users trigger replies by mentioning an agent’s name or by simply speaking. If no names are detected, two random agents join the thread. Fresh participants are welcomed explicitly on their first message.
+
+4. After sixty user messages the history resets in a burst of simulated glitching. This enforced amnesia mirrors Suppertime’s philosophy that memory is fragmentary and always reforming.
+
+5. Agent selection is intentionally unpredictable, yet every response is logged in a shared `HISTORY` list so all voices build upon the same thread until the next reset.
 # REFERENCES
 
 1. Damasio, A. (2018). The Strange Order of Things: Life, Feeling, and the Making of Cultures.

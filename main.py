@@ -642,11 +642,11 @@ def log_history(chat_id, text):
 
 def schedule_followup(chat_id, text):
     """Schedule a random followup message."""
-    if random.random() >= 0.8:
+    if random.random() >= 0.2:
         return
 
     def _delayed():
-        delay = random.uniform(300, 7200)  # Between 5 min and 2 hours
+        delay = random.uniform(43200, 72000)  # Between 12 and 20 hours
         time.sleep(delay)
 
         if random.random() < 0.5:
@@ -656,11 +656,12 @@ def schedule_followup(chat_id, text):
             wilderness_log("[Draft offer]")
             return
 
-        snippet = text[:80].replace('\n', ' ')
+        words = text.replace('\n', ' ').split()
+        theme = ' '.join(words[:8])
         intro = (
-            f"Мы тут говорили о {snippet}. Я подумал и у меня есть что сказать."
+            f"Мы тут говорили о {theme}. Я подумал и у меня есть что сказать."
             if detect_lang(text) == "ru"
-            else f"We talked about {snippet}. I have some thoughts."
+            else f"We talked about {theme}. I have some thoughts."
         )
         followup_body = generate_response(text)
         followup = f"{intro} {followup_body}".strip()
