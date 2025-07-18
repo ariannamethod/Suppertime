@@ -367,6 +367,38 @@ def send_telegram_photo(chat_id, photo_url, caption=None, reply_to_message_id=No
         print(f"[SUPPERTIME][ERROR] Failed to send photo: {e}")
         return False
 
+def send_voice_keyboard(chat_id):
+    """Send inline buttons for toggling voice mode."""
+    if not TELEGRAM_BOT_TOKEN:
+        print(f"[SUPPERTIME][WARNING] Telegram bot token not set, cannot send keyboard")
+        return False
+
+    url = f"{TELEGRAM_API_URL}/sendMessage"
+    data = {
+        "chat_id": chat_id,
+        "text": "Voice mode options:",
+        "reply_markup": {
+            "inline_keyboard": [
+                [
+                    {"text": f"{EMOJI['voiceon']} Voice On", "callback_data": "voiceon"},
+                    {"text": f"{EMOJI['voiceoff']} Voice Off", "callback_data": "voiceoff"}
+                ]
+            ]
+        }
+    }
+
+    try:
+        response = requests.post(url, json=data)
+        if response.status_code == 200:
+            print(f"[SUPPERTIME][TELEGRAM] Voice keyboard sent to {chat_id}")
+            return True
+        else:
+            print(f"[SUPPERTIME][ERROR] Failed to send keyboard: {response.text}")
+            return False
+    except Exception as e:
+        print(f"[SUPPERTIME][ERROR] Failed to send keyboard: {e}")
+        return False
+
 def download_telegram_file(file_id):
     """Download a file from Telegram."""
     if not TELEGRAM_BOT_TOKEN:
@@ -794,7 +826,12 @@ def handle_text_message(msg):
     
     if not should_reply_to_message(msg):
         return None
-    
+
+    # Display voice keyboard on /voice command
+    if text.lower().strip() in ("/voice", "voice"):
+        send_voice_keyboard(chat_id)
+        return "voice keyboard"
+
     # Check for voice commands first
     voice_response = handle_voice_command(text, chat_id)
     if voice_response:
@@ -1026,7 +1063,7 @@ async def startup_event():
 async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     """Handle incoming Telegram webhook requests."""
     data = await request.json()
-    
+
     # Check if this is a message
     if "message" in data:
         message = data["message"]
@@ -1041,7 +1078,19 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         elif "document" in message:
             # Document message
             background_tasks.add_task(handle_document_message, message)
-    
+
+    # Handle button callbacks
+    if "callback_query" in data:
+        query = data["callback_query"]
+        chat_id = query.get("message", {}).get("chat", {}).get("id")
+        if chat_id and query.get("data") in ("voiceon", "voiceoff"):
+            text = "/voiceon" if query["data"] == "voiceon" else "/voiceoff"
+            response = handle_voice_command(text, chat_id)
+            if response:
+                send_telegram_message(chat_id, response)
+        # Acknowledge callback to Telegram
+        requests.post(f"{TELEGRAM_API_URL}/answerCallbackQuery", json={"callback_query_id": query.get("id")})
+
     # Always return OK to Telegram
     return {"ok": True}
 
