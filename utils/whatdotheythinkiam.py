@@ -9,7 +9,10 @@ SNAPSHOT_PATH = os.path.join(SUPPERTIME_DATA_PATH, "vectorized_snapshot.json")
 RESONANCE_PATH = os.path.join(SUPPERTIME_DATA_PATH, "suppertime_resonance.md")
 THOUGHTS_PATH = os.path.join(SUPPERTIME_DATA_PATH, "who_is_real_me.md")
 STATE_PATH = os.path.join(SUPPERTIME_DATA_PATH, "who_is_real_me_state.json")
-README_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "README.md")
+README_PATH = os.getenv(
+    "SUPPERTIME_README_PATH",
+    os.path.join(os.path.dirname(os.path.dirname(__file__)), "README.md"),
+)
 
 
 def _load_state():
@@ -43,6 +46,12 @@ def _load_vector_files():
     except Exception:
         pass
     return []
+
+
+def _summarize_text(text: str, max_lines: int = 40) -> str:
+    """Return the first `max_lines` non-empty lines from text."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return "\n".join(lines[:max_lines])
 
 
 def _default_thoughts():
@@ -80,6 +89,7 @@ def reflect_on_readme(force=False):
                 readme = f.read()
         except Exception:
             readme = ""
+    readme_summary = _summarize_text(readme) if readme else ""
 
     reflection = [
         f"## Reflection {datetime.now().isoformat()}",
@@ -90,8 +100,8 @@ def reflect_on_readme(force=False):
         "### Resonance snapshot",
         resonance,
         "",
-        "### README notes",
-        readme,
+        "### README summary",
+        readme_summary,
         "",
         "### Thoughts",
         _default_thoughts(),
@@ -120,3 +130,17 @@ def latest_reflection():
         idx = text.rfind(marker)
         return text[idx:]
     return text
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="SUPPERTIME identity reflection")
+    parser.add_argument("action", choices=["reflect", "latest"], nargs="?", default="reflect")
+    parser.add_argument("--force", action="store_true", help="Force a new reflection")
+    args = parser.parse_args()
+
+    if args.action == "latest":
+        print(latest_reflection())
+    else:
+        print(reflect_on_readme(force=args.force))
